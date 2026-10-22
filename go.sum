@@ -18,6 +18,8 @@ github.com/inhuman/cleanenv v1.6.0 h1:FL+ckMgVi5Kmtz2j22NSIMDWC5gY5axY1REBK71pFO
 github.com/inhuman/cleanenv v1.6.0/go.mod h1:rJqRNAo9dtBx0Krn8zNGta/jXzQEqz9Cby4x7ksfYNY=
 github.com/inhuman/config v0.0.2 h1:CaAkX++C3CoHpQR/VWdO1CsbHRqH0BYO3Ej7bJz9JAM=
 github.com/inhuman/config v0.0.2/go.mod h1:QyZtoV3HkN3jf2Hk6sO7g8uog11gL9/BzpVXzKK+7Nw=
+github.com/inhuman/evident v0.3.2 h1:nqQZQ9y1ZJ6UVzzNLAX56KBv3+HJtBVq/lR2uWbxDBs=
+github.com/inhuman/evident v0.3.2/go.mod h1:7mqAOGcsKauJjVcr7PKX6+d/eQj4g9Tz8UGqOenuXP4=
 github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
 github.com/joho/godotenv v1.5.1/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=

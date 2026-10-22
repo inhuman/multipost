@@ -26,6 +26,8 @@ const (
 type Telegram struct {
 	Token string
 	Chat  string
+	API   string // tgAPI; a fake server in tests
+	Route routeFunc
 }
 
 func (t *Telegram) Name() string { return "tg" }
@@ -48,7 +50,7 @@ func (t *Telegram) Publish(ctx context.Context, p *Post) (Result, error) {
 		}
 	}
 
-	if err := checkRoute(ctx, tgAPI, viaVPN); err != nil {
+	if err := t.Route(ctx, t.API, viaVPN); err != nil {
 		return Result{}, err
 	}
 
@@ -85,7 +87,7 @@ func (t *Telegram) call(ctx context.Context, method string, fields map[string]st
 		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		tgAPI+"/bot"+t.Token+"/"+method, body)
+		t.API+"/bot"+t.Token+"/"+method, body)
 	if err != nil {
 		return err
 	}

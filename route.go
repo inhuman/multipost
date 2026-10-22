@@ -11,8 +11,8 @@ import (
 )
 
 // Telegram is reachable only through the VPN, Russian platforms (MAX, VK)
-// only past it: ~/software/vpn/rus-routes.sh pins their IPs to the physical
-// gateway. A post sent the wrong way either hangs or gets anti-bot stubs,
+// only past it (on the author's machine rus-routes.sh pins their IPs to the
+// physical gateway). A post sent the wrong way either hangs or gets anti-bot stubs,
 // so every host is checked before it is used, upload hosts included —
 // those are handed out per request and may not be pinned.
 
@@ -35,9 +35,38 @@ func isVPNDev(dev string) bool {
 	return false
 }
 
-// checkRoute resolves host and verifies each IPv4 address leaves through
-// the wanted interface kind.
-func checkRoute(ctx context.Context, rawURL string, want routeWant) error {
+type routeFunc func(ctx context.Context, rawURL string, want routeWant) error
+
+// routeGuard checks where traffic to a host leaves the machine; lookup and
+// dev are the system resolver and `ip route get` in production.
+type routeGuard struct {
+	lookup func(ctx context.Context, host string) ([]net.IP, error)
+	dev    func(ctx context.Context, ip net.IP) (string, error)
+}
+
+var systemRoutes = routeGuard{
+	lookup: func(ctx context.Context, host string) ([]net.IP, error) {
+		return net.DefaultResolver.LookupIP(ctx, "ip4", host)
+	},
+	dev: func(ctx context.Context, ip net.IP) (string, error) {
+		out, err := exec.CommandContext(ctx, "ip", "-4", "route", "get", ip.String()).Output()
+		if err != nil {
+			return "", fmt.Errorf("ip route get %s: %w", ip, err)
+		}
+		m := reDev.FindStringSubmatch(string(out))
+		if m == nil {
+			return "", fmt.Errorf("ip route get %s: no dev in %q", ip, out)
+		}
+		return m[1], nil
+	},
+}
+
+var checkRoute routeFunc = systemRoutes.check
+
+// check resolves the host and verifies every IPv4 address leaves through
+// the wanted interface kind: one wrong address is enough to refuse, since
+// the client may pick any of them.
+func (g routeGuard) check(ctx context.Context, rawURL string, want routeWant) error {
 	if want == viaAny {
 		return nil
 	}
@@ -46,26 +75,24 @@ func checkRoute(ctx context.Context, rawURL string, want routeWant) error {
 		return err
 	}
 	host := u.Hostname()
-	ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", host)
+	ips, err := g.lookup(ctx, host)
 	if err != nil {
 		return fmt.Errorf("resolve %s: %w", host, err)
 	}
+	if len(ips) == 0 {
+		return fmt.Errorf("resolve %s: no IPv4 address", host)
+	}
 	for _, ip := range ips {
-		out, err := exec.CommandContext(ctx, "ip", "-4", "route", "get", ip.String()).Output()
+		dev, err := g.dev(ctx, ip)
 		if err != nil {
-			return fmt.Errorf("ip route get %s: %w", ip, err)
+			return err
 		}
-		m := reDev.FindStringSubmatch(string(out))
-		if m == nil {
-			return fmt.Errorf("ip route get %s: no dev in %q", ip, out)
-		}
-		vpn := isVPNDev(m[1])
+		vpn := isVPNDev(dev)
 		switch {
 		case want == viaDirect && vpn:
-			return fmt.Errorf("%s (%s) goes through VPN (%s): add %s to DOMAINS in ~/software/vpn/rus-routes.sh and run sudo ~/software/vpn/rus-routes.sh up",
-				host, ip, m[1], host)
+			return fmt.Errorf("%s (%s) goes through VPN (%s): add %s to the direct routes (rus-routes.sh up)", host, ip, dev, host)
 		case want == viaVPN && !vpn:
-			return fmt.Errorf("%s (%s) goes direct (%s), Telegram needs the VPN: is Amnezia up?", host, ip, m[1])
+			return fmt.Errorf("%s (%s) goes direct (%s), this platform needs the VPN: is it up?", host, ip, dev)
 		}
 	}
 	return nil

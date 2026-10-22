@@ -86,3 +86,27 @@ sed -i -e 's/pageError\.location\.url/pageError.location?.url || ""/g' \
   $D/package/lib/coreBundle.js     # тот же патч, что делает playwright-go
 $D/node $D/package/cli.js install chromium
 ```
+
+## Спецификация и тесты
+
+Поведение задано моделями на Lean в `spec/lean/MultipostSpec`: теоремы
+проверяет ядро Lean, а Go-тесты ([evident](https://github.com/inhuman/evident))
+гоняют живой код по каждой строке каждой модели.
+
+| требование | что доказано |
+|---|---|
+| `tg.layout` | текст уходит ровно один раз; медиа одним вызовом и первыми; при нарушении лимита — ни одного вызова |
+| `route.guard` | трафик идёт только нужной стороной VPN, проверяется каждый адрес хоста |
+| `targets.select` | названные площадки — все или ни одной; по умолчанию все готовые; опечатка в настройке роняет запуск |
+| `state.no-double-post` | пост не попадает на площадку дважды; сбой не останавливает остальные и не записывается |
+| `post.text` | платные площадки получают весь пост, бесплатные никогда не получают платный текст |
+
+```
+go test ./...                                      # вердикт по каждому требованию
+cd spec/lean && lake build && lake env lean Export.lean   # после правки модели
+cd spec && go run github.com/inhuman/evident/cmd/evident lock evident.lock *.json
+go run github.com/inhuman/evident/cmd/evident verify spec/evident.lock spec/*.json
+```
+
+Правка модели — это правка требования: экспорт и lock перегенерируются
+вместе с ней, иначе тесты не соберут спецификацию.

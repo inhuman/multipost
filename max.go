@@ -17,6 +17,8 @@ import (
 type Max struct {
 	Token  string
 	ChatID int64
+	API    string // maxAPI; a fake server in tests
+	Route  routeFunc
 }
 
 const (
@@ -31,7 +33,7 @@ func (m *Max) Publish(ctx context.Context, p *Post) (Result, error) {
 	if n := textLen(text); n > maxTextMax {
 		return Result{}, fmt.Errorf("text %d chars > %d", n, maxTextMax)
 	}
-	if err := checkRoute(ctx, maxAPI, viaDirect); err != nil {
+	if err := m.Route(ctx, m.API, viaDirect); err != nil {
 		return Result{}, err
 	}
 
@@ -100,7 +102,7 @@ func (m *Max) upload(ctx context.Context, path string) (maxAttachment, error) {
 	if err := m.do(ctx, http.MethodPost, "/uploads?type="+string(kind), nil, &slot); err != nil {
 		return maxAttachment{}, err
 	}
-	if err := checkRoute(ctx, slot.URL, viaDirect); err != nil {
+	if err := m.Route(ctx, slot.URL, viaDirect); err != nil {
 		return maxAttachment{}, err
 	}
 	body, ctype, err := multipartBody(nil, []formFile{{"data", path}})
@@ -132,7 +134,7 @@ func (m *Max) upload(ctx context.Context, path string) (maxAttachment, error) {
 }
 
 func (m *Max) do(ctx context.Context, method, path string, body []byte, out any) error {
-	req, err := http.NewRequestWithContext(ctx, method, maxAPI+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, m.API+path, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

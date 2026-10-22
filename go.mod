@@ -1,9 +1,10 @@
 module github.com/inhuman/multipost
 
-go 1.26.1
+go 1.26.5
 
 require (
 	github.com/inhuman/config v0.0.2
+	github.com/inhuman/evident v0.3.2
 	github.com/playwright-community/playwright-go v0.6000.0
 	go.uber.org/zap v1.28.0
 	gopkg.in/yaml.v3 v3.0.1

@@ -1,0 +1,54 @@
+{
+  "post.text": {
+    "table_sha256": "f013d06b12093ce5c42a90a3e660e82807f007e972aba3eeaaec952f3389ded4",
+    "theorems": {
+      "PostText.full_is_same_everywhere": "∀ (p l : Bool), PostText.textFor PostText.Mode.full p l = PostText.Text.body",
+      "PostText.link_never_lost": "PostText.textFor PostText.Mode.teaser Bool.false Bool.true = PostText.Text.teaserLink",
+      "PostText.paid_gets_body": "∀ (m : PostText.Mode) (l : Bool), PostText.textFor m Bool.true l = PostText.Text.body",
+      "PostText.teaser_never_leaks_body": "∀ (l : Bool), PostText.textFor PostText.Mode.teaser Bool.false l ≠ PostText.Text.body"
+    }
+  },
+  "route.guard": {
+    "table_sha256": "aba7279e9de083aed2bf428c491325b3a132e03a1049deca2d0a5bdb0cea4e4b",
+    "theorems": {
+      "RouteGuard.any_always_allowed": "∀ (a b : Option RouteGuard.Iface), RouteGuard.allowed RouteGuard.Want.any a b = Bool.true",
+      "RouteGuard.direct_never_through_vpn": "∀ (a b : Option RouteGuard.Iface),\n  RouteGuard.allowed RouteGuard.Want.direct a b = Bool.true →\n    a ≠ Option.some RouteGuard.Iface.vpn ∧ b ≠ Option.some RouteGuard.Iface.vpn",
+      "RouteGuard.every_kind_passable": "∀ (w : RouteGuard.Want), ∃ a, RouteGuard.allowed w a Option.none = Bool.true",
+      "RouteGuard.one_wrong_address_refuses": "∀ (a : Option RouteGuard.Iface),\n  RouteGuard.allowed RouteGuard.Want.direct a (Option.some RouteGuard.Iface.vpn) = Bool.false ∧\n    RouteGuard.allowed RouteGuard.Want.vpn a (Option.some RouteGuard.Iface.phys) = Bool.false",
+      "RouteGuard.unresolved_refused": "∀ (w : RouteGuard.Want), w ≠ RouteGuard.Want.any → RouteGuard.allowed w Option.none Option.none = Bool.false",
+      "RouteGuard.vpn_never_direct": "∀ (a b : Option RouteGuard.Iface),\n  RouteGuard.allowed RouteGuard.Want.vpn a b = Bool.true →\n    a ≠ Option.some RouteGuard.Iface.phys ∧ b ≠ Option.some RouteGuard.Iface.phys"
+    }
+  },
+  "state.no-double-post": {
+    "table_sha256": "33a8c5b3e8d51288fee66d77e289e9e36d6cb0ba2baa8a15b71b24069558bb3a",
+    "theorems": {
+      "NoDoublePost.fails_iff_attempt_failed": "∀ (ap : Bool) (ar : NoDoublePost.Result) (bp : Bool) (br : NoDoublePost.Result) (f : Bool),\n  (NoDoublePost.run ap ar bp br f).failed = Bool.true ↔\n    (NoDoublePost.step ap ar f).fst = Bool.true ∧ ar = NoDoublePost.Result.fail ∨\n      (NoDoublePost.step bp br f).fst = Bool.true ∧ br = NoDoublePost.Result.fail",
+      "NoDoublePost.failure_does_not_stop_others": "∀ (ap : Bool) (br : NoDoublePost.Result) (f : Bool),\n  ap = Bool.false ∨ f = Bool.true →\n    NoDoublePost.Target.b ∈ (NoDoublePost.run ap NoDoublePost.Result.fail Bool.false br f).attempted",
+      "NoDoublePost.failure_not_recorded": "∀ (bp : Bool) (br : NoDoublePost.Result) (f : Bool),\n  ¬NoDoublePost.Target.a ∈ (NoDoublePost.run Bool.false NoDoublePost.Result.fail bp br f).recorded",
+      "NoDoublePost.no_double_post": "∀ (ar : NoDoublePost.Result) (bp : Bool) (br : NoDoublePost.Result),\n  ¬NoDoublePost.Target.a ∈ (NoDoublePost.run Bool.true ar bp br Bool.false).attempted",
+      "NoDoublePost.record_never_lost": "∀ (ar : NoDoublePost.Result) (bp : Bool) (br : NoDoublePost.Result) (f : Bool),\n  NoDoublePost.Target.a ∈ (NoDoublePost.run Bool.true ar bp br f).recorded",
+      "NoDoublePost.success_recorded": "∀ (ap bp : Bool) (br : NoDoublePost.Result) (f : Bool),\n  ap = Bool.false ∨ f = Bool.true →\n    NoDoublePost.Target.a ∈ (NoDoublePost.run ap NoDoublePost.Result.ok bp br f).recorded"
+    }
+  },
+  "targets.select": {
+    "table_sha256": "149c08412d9c6e79b94d9f52a7a96ab1be763a9ed7bfc1775c07595f9751a7f8",
+    "theorems": {
+      "TargetSelect.default_takes_every_ready": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk) (t : TargetSelect.Target),\n  mx ≠ TargetSelect.MaxCfg.badId →\n    TargetSelect.setup tg mx vk t = TargetSelect.Setup.ready →\n      t ∈ (TargetSelect.choose tg mx vk TargetSelect.Request.byDefault).selected",
+      "TargetSelect.failure_posts_nowhere": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk) (req : TargetSelect.Request),\n  (TargetSelect.choose tg mx vk req).failed = Bool.true → (TargetSelect.choose tg mx vk req).selected = []",
+      "TargetSelect.named_is_all_or_nothing": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk) (req : TargetSelect.Request),\n  req ≠ TargetSelect.Request.byDefault →\n    (TargetSelect.choose tg mx vk req).failed = Bool.false →\n      (TargetSelect.choose tg mx vk req).selected = TargetSelect.named req",
+      "TargetSelect.never_selects_unready": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk) (req : TargetSelect.Request)\n  (t : TargetSelect.Target),\n  t ∈ (TargetSelect.choose tg mx vk req).selected → TargetSelect.setup tg mx vk t = TargetSelect.Setup.ready",
+      "TargetSelect.typo_is_loud": "∀ (tg : TargetSelect.Tg) (vk : TargetSelect.Vk) (req : TargetSelect.Request),\n  TargetSelect.Target.max ∈ TargetSelect.named req →\n    (TargetSelect.choose tg TargetSelect.MaxCfg.badId vk req).failed = Bool.true",
+      "TargetSelect.unasked_does_not_block": "∀ (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk),\n  TargetSelect.choose TargetSelect.Tg.ready mx vk TargetSelect.Request.onlyTg =\n    { selected := [TargetSelect.Target.tg], failed := Bool.false }"
+    }
+  },
+  "tg.layout": {
+    "table_sha256": "53ae00d21ff99a9b3754410621888683852bff5a6406c8f69f1fea94020d5f3d",
+    "theorems": {
+      "TgLayout.caption_only_short": "∀ (m : TgLayout.Media) (t : TgLayout.Text), (TgLayout.layout m t).caption = Bool.true → t = TgLayout.Text.short",
+      "TgLayout.media_once_and_first": "∀ (m : TgLayout.Media) (t : TgLayout.Text),\n  m ≠ TgLayout.Media.empty →\n    (TgLayout.layout m t).refused = Bool.false →\n      (TgLayout.layout m t).calls.head? = Option.some (TgLayout.mediaCall m) ∧\n        (List.filter (fun x =\u003e x != TgLayout.Call.message) (TgLayout.layout m t).calls).length = 1",
+      "TgLayout.refused_iff_over_limit": "∀ (m : TgLayout.Media) (t : TgLayout.Text),\n  (TgLayout.layout m t).refused = Bool.true ↔\n    t = TgLayout.Text.over ∨ m = TgLayout.Media.tooMany ∨ m = TgLayout.Media.tooBig",
+      "TgLayout.refused_sends_nothing": "∀ (m : TgLayout.Media) (t : TgLayout.Text), (TgLayout.layout m t).refused = Bool.true → (TgLayout.layout m t).calls = []",
+      "TgLayout.text_sent_once": "∀ (m : TgLayout.Media) (t : TgLayout.Text),\n  (TgLayout.layout m t).refused = Bool.false →\n    (List.count TgLayout.Call.message (TgLayout.layout m t).calls +\n        if (TgLayout.layout m t).caption = Bool.true then 1 else 0) =\n      1"
+    }
+  }
+}

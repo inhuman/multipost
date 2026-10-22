@@ -1,0 +1,11 @@
+name = "MultipostSpec"
+defaultTargets = ["MultipostSpec"]
+
+[[require]]
+name = "evident"
+git = "https://github.com/inhuman/evident"
+rev = "v0.3.2"
+subDir = "lean"
+
+[[lean_lib]]
+name = "MultipostSpec"

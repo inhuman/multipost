@@ -103,6 +103,15 @@ func loadPost(dir string) (*Post, error) {
 	return p, nil
 }
 
+// TextFor is what a target gets: paid platforms always the full post, free
+// ones the full post or, in teaser mode, the teaser plus the paid link.
+func (p *Post) TextFor(paid bool) string {
+	if paid {
+		return p.Body
+	}
+	return p.PublicText()
+}
+
 // PublicText is what free channels get: the full post, or the teaser plus
 // the paid link.
 func (p *Post) PublicText() string {

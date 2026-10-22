@@ -86,6 +86,7 @@ type BrowserTarget struct {
 	profile  string
 	headless bool
 	route    routeWant
+	checker  routeFunc
 	flow     siteFlow
 }
 
@@ -97,7 +98,7 @@ var browserFlows = map[string]siteFlow{}
 func (b *BrowserTarget) Name() string { return b.name }
 
 func (b *BrowserTarget) Publish(ctx context.Context, p *Post) (Result, error) {
-	if err := checkRoute(ctx, b.startURL, b.route); err != nil {
+	if err := b.checker(ctx, b.startURL, b.route); err != nil {
 		return Result{}, err
 	}
 	s, err := openBrowser(b.profile, b.headless)

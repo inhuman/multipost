@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +31,10 @@ type Config struct {
 }
 
 var allTargets = []string{"tg", "max", "vk", "boosty", "sponsr"}
+
+// paidTargets get the full post behind their paywall; the rest get the
+// public text.
+var paidTargets = map[string]bool{"boosty": true, "sponsr": true}
 
 const usage = `multipost — один пост на все площадки
 
@@ -128,8 +131,34 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 	if *only != "" {
 		names = strings.Split(*only, ",")
 	}
-	// Named targets must all be set up; by default every configured one
-	// goes and the rest are only reported.
+	targets, err := selectTargets(cfg, names, log)
+	if err != nil {
+		return err
+	}
+
+	if *dryRun {
+		return printPlan(ctx, post, targets)
+	}
+
+	state, err := loadState(post.Dir)
+	if err != nil {
+		return err
+	}
+	failed, err := publishAll(ctx, log, post, targets, state, *force)
+	if err != nil {
+		return err
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("failed: %s — fix and rerun, posted targets are skipped", strings.Join(failed, ","))
+	}
+	return nil
+}
+
+// selectTargets builds the targets to post to. Named targets must all be
+// set up, or nothing goes; by default every configured one goes and the
+// rest are only reported. A value that is set but broken (MAX_CHAT_ID
+// with a typo) always fails: skipping it would hide the typo.
+func selectTargets(cfg Config, names []string, log *zap.Logger) ([]Target, error) {
 	explicit := len(names) > 0
 	if !explicit {
 		names = allTargets
@@ -142,26 +171,24 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 			continue
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 		targets = append(targets, t)
 	}
 	if len(targets) == 0 {
-		return fmt.Errorf("no target configured in %s", *envPath)
+		return nil, errors.New("no target configured in the .env")
 	}
+	return targets, nil
+}
 
-	if *dryRun {
-		return printPlan(ctx, post, targets)
-	}
-
-	state, err := loadState(post.Dir)
-	if err != nil {
-		return err
-	}
+// publishAll posts to every target in order. A target the post already
+// reached is skipped unless force; a failure is logged and the rest still
+// go; state is saved after each success, so a crash never forgets a post.
+func publishAll(ctx context.Context, log *zap.Logger, post *Post, targets []Target, state State, force bool) ([]string, error) {
 	var failed []string
 	for _, t := range targets {
 		l := log.With(zap.String("target", t.Name()))
-		if prev, ok := state[t.Name()]; ok && !*force {
+		if prev, ok := state[t.Name()]; ok && !force {
 			l.Info("already posted, skip (-force to repeat)", zap.String("url", prev.URL), zap.Time("at", prev.At))
 			continue
 		}
@@ -174,14 +201,11 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 		}
 		state[t.Name()] = Posted{Result: res, At: time.Now()}
 		if err := state.save(post.Dir); err != nil {
-			return err
+			return failed, err
 		}
 		l.Info("posted", zap.String("id", res.ID), zap.String("url", res.URL), zap.Duration("took", time.Since(start)))
 	}
-	if len(failed) > 0 {
-		return fmt.Errorf("failed: %s — fix and rerun, posted targets are skipped", strings.Join(failed, ","))
-	}
-	return nil
+	return failed, nil
 }
 
 var errNotConfigured = errors.New("not configured")
@@ -195,7 +219,7 @@ func buildTarget(cfg Config, name string) (Target, error) {
 		if cfg.TGBotToken == "" || cfg.TGChat == "" {
 			return nil, missing("TG_BOT_TOKEN", "TG_CHAT")
 		}
-		return &Telegram{Token: cfg.TGBotToken, Chat: cfg.TGChat}, nil
+		return &Telegram{Token: cfg.TGBotToken, Chat: cfg.TGChat, API: tgAPI, Route: checkRoute}, nil
 	case "max":
 		if cfg.MaxBotToken == "" || cfg.MaxChatID == "" {
 			return nil, missing("MAX_BOT_TOKEN", "MAX_CHAT_ID")
@@ -204,7 +228,7 @@ func buildTarget(cfg Config, name string) (Target, error) {
 		if err != nil {
 			return nil, fmt.Errorf("MAX_CHAT_ID: %w", err)
 		}
-		return &Max{Token: cfg.MaxBotToken, ChatID: id}, nil
+		return &Max{Token: cfg.MaxBotToken, ChatID: id, API: maxAPI, Route: checkRoute}, nil
 	case "vk", "boosty", "sponsr":
 		url := map[string]string{"vk": cfg.VKURL, "boosty": cfg.BoostyURL, "sponsr": cfg.SponsrURL}[name]
 		if url == "" {
@@ -214,7 +238,7 @@ func buildTarget(cfg Config, name string) (Target, error) {
 			return nil, fmt.Errorf("target %s: browser flow not recorded yet: %w", name, errNotConfigured)
 		}
 		route := map[string]routeWant{"vk": viaDirect, "boosty": viaAny, "sponsr": viaAny}[name]
-		return &BrowserTarget{name: name, startURL: url, profile: cfg.Profile, headless: cfg.Headless, route: route, flow: browserFlows[name]}, nil
+		return &BrowserTarget{name: name, startURL: url, profile: cfg.Profile, headless: cfg.Headless, route: route, checker: checkRoute, flow: browserFlows[name]}, nil
 	}
 	return nil, fmt.Errorf("unknown target %q, want one of %v", name, allTargets)
 }
@@ -225,10 +249,7 @@ func printPlan(ctx context.Context, p *Post, targets []Target) error {
 		fmt.Println("  ", filepath.Base(m), kindOf(m))
 	}
 	for _, t := range targets {
-		text := p.PublicText()
-		if slices.Contains([]string{"boosty", "sponsr"}, t.Name()) {
-			text = p.Body
-		}
+		text := p.TextFor(paidTargets[t.Name()])
 		fmt.Printf("\n== %s: %d знаков, маршрут: %s\n%s\n", t.Name(), textLen(text), routeStatus(ctx, t), text)
 	}
 	return nil
@@ -238,11 +259,11 @@ func routeStatus(ctx context.Context, t Target) string {
 	var err error
 	switch t := t.(type) {
 	case *Telegram:
-		err = checkRoute(ctx, tgAPI, viaVPN)
+		err = t.Route(ctx, t.API, viaVPN)
 	case *Max:
-		err = checkRoute(ctx, maxAPI, viaDirect)
+		err = t.Route(ctx, t.API, viaDirect)
 	case *BrowserTarget:
-		err = checkRoute(ctx, t.startURL, t.route)
+		err = t.checker(ctx, t.startURL, t.route)
 	}
 	if err != nil {
 		return "⛔ " + err.Error()

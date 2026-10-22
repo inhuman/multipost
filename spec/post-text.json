@@ -1,0 +1,29 @@
+{"theorems":
+ [{"statement":
+   "∀ (m : PostText.Mode) (l : Bool), PostText.textFor m Bool.true l = PostText.Text.body",
+   "name": "PostText.paid_gets_body",
+   "axioms": ["propext"]},
+  {"statement":
+   "∀ (p l : Bool), PostText.textFor PostText.Mode.full p l = PostText.Text.body",
+   "name": "PostText.full_is_same_everywhere",
+   "axioms": []},
+  {"statement":
+   "∀ (l : Bool), PostText.textFor PostText.Mode.teaser Bool.false l ≠ PostText.Text.body",
+   "name": "PostText.teaser_never_leaks_body",
+   "axioms": []},
+  {"statement":
+   "PostText.textFor PostText.Mode.teaser Bool.false Bool.true = PostText.Text.teaserLink",
+   "name": "PostText.link_never_lost",
+   "axioms": []}],
+ "rows":
+ [{"out": "body", "in": {"paid": false, "mode": "full", "link": false}},
+  {"out": "body", "in": {"paid": false, "mode": "full", "link": true}},
+  {"out": "body", "in": {"paid": true, "mode": "full", "link": false}},
+  {"out": "body", "in": {"paid": true, "mode": "full", "link": true}},
+  {"out": "teaser", "in": {"paid": false, "mode": "teaser", "link": false}},
+  {"out": "teaserLink", "in": {"paid": false, "mode": "teaser", "link": true}},
+  {"out": "body", "in": {"paid": true, "mode": "teaser", "link": false}},
+  {"out": "body", "in": {"paid": true, "mode": "teaser", "link": true}}],
+ "output": "text",
+ "inputs": ["mode", "paid", "link"],
+ "id": "post.text"}
