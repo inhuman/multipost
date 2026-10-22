@@ -23,11 +23,11 @@ type Config struct {
 	TGBotToken  string `env:"TG_BOT_TOKEN"`
 	TGChat      string `env:"TG_CHAT"` // @channel or -100…
 	MaxBotToken string `env:"MAX_BOT_TOKEN"`
-	MaxChatID   string `env:"MAX_CHAT_ID"` // empty in the template until max-chats tells it
-	VKURL       string `env:"VK_URL"`     // community page, https://vk.com/club…
-	BoostyURL   string `env:"BOOSTY_URL"` // https://boosty.to/<blog>
-	SponsrURL   string `env:"SPONSR_URL"` // https://sponsr.ru/<project>/
-	PostsDir    string `env:"POSTS_DIR"`  // a bare post name is looked up here
+	MaxChatID   string `env:"MAX_CHAT_ID"`     // empty in the template until max-chats tells it
+	VKURL       string `env:"VK_URL"`          // community page, https://vk.com/club…
+	BoostyURL   string `env:"BOOSTY_URL"`      // https://boosty.to/<blog>
+	SponsrURL   string `env:"SPONSR_URL"`      // https://sponsr.ru/<project>/
+	Profile     string `env:"BROWSER_PROFILE"` // default: browser/ next to the env file
 	Headless    bool   `env:"BROWSER_HEADLESS" env-default:"false"`
 }
 
@@ -35,12 +35,11 @@ var allTargets = []string{"tg", "max", "vk", "boosty", "sponsr"}
 
 const usage = `multipost — один пост на все площадки
 
-  multipost [-only tg,max] [-dry-run] [-force] <пост>
-      <пост> — каталог или имя подкаталога в POSTS_DIR
-  multipost login vk|boosty|sponsr   войти в браузерном профиле (один раз)
-  multipost max-chats                 чаты бота MAX, для MAX_CHAT_ID
+  multipost -env <путь/.env> [-only tg,max] [-dry-run] [-force] <каталог поста>
+  multipost -env <путь/.env> login vk|boosty|sponsr   войти в браузерном профиле
+  multipost -env <путь/.env> max-chats                чаты бота MAX, для MAX_CHAT_ID
 
-Токены и адреса — в ~/.config/multipost/.env (см. README).
+Токены и адреса проекта — в его .env (см. README, env.example).
 `
 
 func main() {
@@ -63,41 +62,53 @@ func main() {
 	}
 }
 
-func loadConfig() (Config, error) {
+func loadConfig(envPath string) (Config, error) {
 	var cfg Config
-	dir, err := os.UserConfigDir()
-	if err != nil {
+	if envPath == "" {
+		return cfg, errors.New("-env is required: path to the project's .env")
+	}
+	// config.Load falls back to the process env when the file can't be
+	// read; a typo in the path must fail, not post with empty tokens.
+	if _, err := os.Stat(envPath); err != nil {
 		return cfg, err
 	}
-	err = config.Load(&cfg, config.WithSearchInDotEnvFile(),
-		config.WithFilePath(filepath.Join(dir, "multipost", ".env")))
-	return cfg, err
+	if err := config.Load(&cfg, config.WithSearchInDotEnvFile(), config.WithFilePath(envPath)); err != nil {
+		return cfg, err
+	}
+	if cfg.Profile == "" {
+		cfg.Profile = filepath.Join(filepath.Dir(envPath), "browser")
+	}
+	return cfg, nil
 }
 
 func run(ctx context.Context, log *zap.Logger, args []string) error {
 	fs := flag.NewFlagSet("multipost", flag.ContinueOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
+	envPath := fs.String("env", "", "path to the project's .env with tokens and URLs")
 	only := fs.String("only", "", "comma-separated targets, overrides the post's list")
 	dryRun := fs.Bool("dry-run", false, "show what goes where, publish nothing")
 	force := fs.Bool("force", false, "publish again where the post already went")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args); errors.Is(err, flag.ErrHelp) {
+		return nil
+	} else if err != nil {
 		return err
 	}
-	cfg, err := loadConfig()
+	if fs.NArg() == 0 {
+		fs.Usage()
+		return errors.New("no post directory")
+	}
+	cfg, err := loadConfig(*envPath)
 	if err != nil {
 		return err
 	}
 
 	switch fs.Arg(0) {
-	case "":
-		fs.Usage()
-		return fmt.Errorf("no post directory")
 	case "login":
 		url := map[string]string{"vk": cfg.VKURL, "boosty": cfg.BoostyURL, "sponsr": cfg.SponsrURL}[fs.Arg(1)]
 		if url == "" {
 			return fmt.Errorf("login %q: unknown site or its URL is not set in .env", fs.Arg(1))
 		}
-		return login(ctx, url)
+		return login(ctx, cfg.Profile, url)
 	case "max-chats":
 		chats, err := (&Max{Token: cfg.MaxBotToken}).Chats(ctx)
 		if err != nil {
@@ -109,7 +120,7 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 		return nil
 	}
 
-	post, err := loadPost(resolvePostDir(cfg.PostsDir, fs.Arg(0)))
+	post, err := loadPost(fs.Arg(0))
 	if err != nil {
 		return err
 	}
@@ -136,7 +147,7 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 		targets = append(targets, t)
 	}
 	if len(targets) == 0 {
-		return errors.New("no target configured in ~/.config/multipost/.env")
+		return fmt.Errorf("no target configured in %s", *envPath)
 	}
 
 	if *dryRun {
@@ -175,16 +186,9 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 
 var errNotConfigured = errors.New("not configured")
 
-func resolvePostDir(postsDir, arg string) string {
-	if _, err := os.Stat(arg); err == nil || postsDir == "" || filepath.IsAbs(arg) {
-		return arg
-	}
-	return filepath.Join(postsDir, arg)
-}
-
 func buildTarget(cfg Config, name string) (Target, error) {
 	missing := func(vars ...string) error {
-		return fmt.Errorf("target %s: set %s in ~/.config/multipost/.env: %w", name, strings.Join(vars, ", "), errNotConfigured)
+		return fmt.Errorf("target %s: set %s in the .env: %w", name, strings.Join(vars, ", "), errNotConfigured)
 	}
 	switch name {
 	case "tg":
@@ -210,7 +214,7 @@ func buildTarget(cfg Config, name string) (Target, error) {
 			return nil, fmt.Errorf("target %s: browser flow not recorded yet: %w", name, errNotConfigured)
 		}
 		route := map[string]routeWant{"vk": viaDirect, "boosty": viaAny, "sponsr": viaAny}[name]
-		return &BrowserTarget{name: name, startURL: url, headless: cfg.Headless, route: route, flow: browserFlows[name]}, nil
+		return &BrowserTarget{name: name, startURL: url, profile: cfg.Profile, headless: cfg.Headless, route: route, flow: browserFlows[name]}, nil
 	}
 	return nil, fmt.Errorf("unknown target %q, want one of %v", name, allTargets)
 }

@@ -27,12 +27,17 @@ Boosty и Sponsr получают полный текст, остальные �
 
 ## Запуск
 
+Оба пути полные: утилита общая, у каждого проекта свои `.env` и посты.
+
 ```
-go install github.com/inhuman/multipost@latest   # или go install . из клона
-multipost -dry-run 2026-10-23-slug   # имя в POSTS_DIR или путь; что куда уйдёт
-multipost post/
-multipost -only max post/     # одна площадка
+go install github.com/inhuman/multipost@latest
+multipost -env ~/proj/.multipost/.env -dry-run ~/proj/posts/2026-10-23-slug
+multipost -env ~/proj/.multipost/.env ~/proj/posts/2026-10-23-slug
+multipost -env … -only tg …    # одна площадка
 ```
+
+Удобнее завести в проекте обёртку, которая подставляет оба пути
+по имени поста.
 
 Где пост уже вышел, записано в `post/.multipost.json`. Повторный запуск
 пропускает эти площадки; `-force` публикует заново.
@@ -44,7 +49,10 @@ Telegram доступен только через VPN, MAX и VK — тольк�
 проверяет `ip route get` каждого хоста, включая выданные адреса загрузки,
 и при неверном маршруте отказывается постить.
 
-## Настройка: `~/.config/multipost/.env`
+## Настройка: `.env` проекта
+
+Образец — `env.example`. Файл с токенами держать под `.gitignore`.
+
 
 | переменная | что |
 |---|---|
@@ -55,11 +63,12 @@ Telegram доступен только через VPN, MAX и VK — тольк�
 | `VK_URL` | страница сообщества, `https://vk.com/club…` |
 | `BOOSTY_URL` | `https://boosty.to/<блог>` |
 | `SPONSR_URL` | `https://sponsr.ru/<проект>/` |
-| `POSTS_DIR` | где искать пост по имени |
+| `BROWSER_PROFILE` | профиль браузера; по умолчанию `browser/` рядом с `.env` |
 | `BROWSER_HEADLESS` | `true` — браузер без окна (по умолчанию окно видно) |
 
-Браузерным площадкам нужен вход один раз: `multipost login vk`
-(аналогично `boosty`, `sponsr`). Профиль хранится в `~/.config/multipost/browser`.
+Браузерным площадкам нужен вход один раз: `multipost -env … login vk`
+(аналогично `boosty`, `sponsr`). Профиль с сессиями лежит рядом с `.env`,
+поэтому под `.gitignore` должен быть весь каталог.
 
 ## Драйвер Playwright
 
