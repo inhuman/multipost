@@ -60,14 +60,15 @@ const (
 // transport error or an unreadable success may hide a post that went out,
 // anything else was refused before or by the platform.
 func classify(err error) attemptResult {
-	switch {
-	case err == nil:
+	if err == nil {
 		return resultOK
-	case errors.Is(err, errAmbiguous):
-		return resultLost
 	}
+	// Half-sent first: its ids must survive whatever error it wraps.
 	if _, ok := errors.AsType[*halfSentError](err); ok {
 		return resultHalfSent
+	}
+	if errors.Is(err, errAmbiguous) {
+		return resultLost
 	}
 	if _, ok := errors.AsType[*url.Error](err); ok {
 		return resultLost

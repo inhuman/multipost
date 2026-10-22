@@ -192,10 +192,15 @@ func publishAll(ctx context.Context, log *zap.Logger, post *Post, targets []Targ
 		name := t.Name()
 		l := log.With(zap.String("target", name))
 		hash := textHash(toPlainNoURL(post.TextFor(paidTargets[name])))
-		e := j.find(name, post.Dir, hash)
 
+		e := j.find(name, post.Dir, hash)
 		if e != nil && !force {
 			if e.Status == statusPosted {
+				// A forced repost may have left a fragment next to the post.
+				if err := removeHalfSent(ctx, j, t, post.Dir); err != nil {
+					l.Warn("half-sent post can't be removed", zap.Error(err))
+					failed = append(failed, name)
+				}
 				l.Info("already posted, skip (-force to repeat)", zap.String("url", e.URL), zap.String("dir", e.Dir))
 				continue
 			}
@@ -205,34 +210,42 @@ func publishAll(ctx context.Context, log *zap.Logger, post *Post, targets []Targ
 				failed = append(failed, name)
 				continue
 			}
-			res, found, err := hf.FindPost(ctx, j.lastID(name), hash)
+			// The platform may hold the text as it was attempted, and only
+			// messages after what was known then can be it.
+			since := e.SinceID
+			if since == 0 {
+				since = j.lastID(name) // entries from before SinceID was kept
+			}
+			res, found, err := hf.FindPost(ctx, since, e.Hash)
 			if err != nil {
 				l.Warn("previous attempt has unknown outcome, history check failed: skipped", zap.Error(err))
 				failed = append(failed, name)
 				continue
 			}
 			if found {
-				j.put(Entry{Target: name, Dir: post.Dir, Hash: hash, Status: statusPosted, ID: res.ID, URL: res.URL})
+				j.put(Entry{Target: name, Dir: post.Dir, Hash: e.Hash, Status: statusPosted, ID: res.ID, URL: res.URL})
 				if err := j.save(); err != nil {
 					return failed, err
 				}
 				l.Warn("previous attempt did post: found on the platform, recorded", zap.String("url", res.URL))
 				continue
 			}
-			if c, ok := t.(cleaner); ok && len(e.Sent) > 0 {
-				if err := c.Cleanup(ctx, e.Sent); err != nil {
-					l.Warn("half-sent post can't be removed: skipped", zap.Strings("sent", e.Sent), zap.Error(err))
-					failed = append(failed, name)
-					continue
-				}
-			}
+		}
+
+		// Not on the platform (or -force): the half-sent part goes before
+		// the whole post is sent again. Found posts never get here, so a
+		// post is never deleted on suspicion of being a fragment.
+		if err := removeHalfSent(ctx, j, t, post.Dir); err != nil {
+			l.Warn("half-sent post can't be removed: skipped", zap.Error(err))
+			failed = append(failed, name)
+			continue
 		}
 
 		var prev *Entry
 		if cur := j.entryFor(name, post.Dir); cur != nil {
 			prev = new(*cur)
 		}
-		j.put(Entry{Target: name, Dir: post.Dir, Hash: hash, Status: statusPending})
+		j.put(Entry{Target: name, Dir: post.Dir, Hash: hash, Status: statusPending, SinceID: j.lastID(name)})
 		if err := j.save(); err != nil {
 			return failed, err
 		}
@@ -251,7 +264,7 @@ func publishAll(ctx context.Context, log *zap.Logger, post *Post, targets []Targ
 			failed = append(failed, name)
 		case resultHalfSent:
 			hs, _ := errors.AsType[*halfSentError](err)
-			j.put(Entry{Target: name, Dir: post.Dir, Hash: hash, Status: statusPending, Sent: hs.Sent})
+			j.put(Entry{Target: name, Dir: post.Dir, Hash: hash, Status: statusPending, Sent: hs.Sent, SinceID: j.lastID(name)})
 			l.Error("post half sent, the next run removes the part and retries", zap.Error(err))
 			failed = append(failed, name)
 		}
@@ -260,6 +273,24 @@ func publishAll(ctx context.Context, log *zap.Logger, post *Post, targets []Targ
 		}
 	}
 	return failed, nil
+}
+
+// removeHalfSent deletes what a half-sent attempt left on the platform and
+// forgets the ids once they are gone.
+func removeHalfSent(ctx context.Context, j *Journal, t Target, dir string) error {
+	cur := j.entryFor(t.Name(), dir)
+	if cur == nil || len(cur.Sent) == 0 {
+		return nil
+	}
+	c, ok := t.(cleaner)
+	if !ok {
+		return fmt.Errorf("platform can't delete, left in place: %v", cur.Sent)
+	}
+	if err := c.Cleanup(ctx, cur.Sent); err != nil {
+		return fmt.Errorf("delete %v: %w", cur.Sent, err)
+	}
+	cur.Sent = nil
+	return j.save()
 }
 
 var errNotConfigured = errors.New("not configured")

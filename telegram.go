@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 )
 
 // Bot API limits: caption 1024, message 4096, upload 50 MB, album 10.
@@ -24,6 +25,12 @@ const (
 	tgScanMisses = 20
 	tgScanMax    = 500
 )
+
+// tgLen is a text's length as Telegram counts it against its limits:
+// visible characters in UTF-16 code units, so an emoji counts twice.
+func tgLen(md string) int {
+	return len(utf16.Encode([]rune(toPlainNoURL(md))))
+}
 
 // Telegram posts to a channel through a bot that is its admin. Chat is
 // @channelname or the numeric -100… id.
@@ -42,7 +49,7 @@ func (t *Telegram) Name() string { return "tg" }
 
 func (t *Telegram) Publish(ctx context.Context, p *Post) (Result, error) {
 	text := p.PublicText()
-	if n := textLen(text); n > tgTextMax {
+	if n := tgLen(text); n > tgTextMax {
 		return Result{}, fmt.Errorf("text %d chars > %d", n, tgTextMax)
 	}
 	if len(p.Media) > tgAlbumMax {
@@ -69,11 +76,11 @@ func (t *Telegram) Publish(ctx context.Context, p *Post) (Result, error) {
 	// A long text can't be a caption: the album goes first, the text
 	// follows as its own message, and the text is what the result points at.
 	caption := htmlText
-	if textLen(text) > tgCaptionMax {
+	if tgLen(text) > tgCaptionMax {
 		caption = ""
 	}
 	res, err := t.sendMedia(ctx, p.Media, caption)
-	if err != nil || caption != "" {
+	if err != nil || caption != "" || strings.TrimSpace(text) == "" {
 		return res, err
 	}
 	msg, err := t.sendText(ctx, htmlText)

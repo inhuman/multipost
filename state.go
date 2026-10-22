@@ -24,14 +24,17 @@ type Journal struct {
 }
 
 type Entry struct {
-	Target string    `json:"target"`
-	Dir    string    `json:"dir"`
-	Hash   string    `json:"hash"`
-	Status string    `json:"status"` // pending | posted
-	ID     string    `json:"id,omitzero"`
-	URL    string    `json:"url,omitzero"`
-	Sent   []string  `json:"sent,omitzero"` // ids of a half-sent post, to clean up before the retry
-	At     time.Time `json:"at"`
+	Target string   `json:"target"`
+	Dir    string   `json:"dir"`
+	Hash   string   `json:"hash"`
+	Status string   `json:"status"` // pending | posted
+	ID     string   `json:"id,omitzero"`
+	URL    string   `json:"url,omitzero"`
+	Sent   []string `json:"sent,omitzero"` // ids of a half-sent post, to clean up before the retry
+	// SinceID is the newest message id known when the attempt started:
+	// a history scan for a pending post starts after it.
+	SinceID int64     `json:"since_id,omitzero"`
+	At      time.Time `json:"at"`
 }
 
 const (
@@ -99,6 +102,9 @@ func (j *Journal) put(e Entry) {
 	e.At = time.Now()
 	if cur := j.entryFor(e.Target, e.Dir); cur != nil {
 		if cur.Status == statusPosted && e.Status == statusPending {
+			// Still posted, but a half-sent fragment of a forced repost
+			// must stay known until it is removed.
+			cur.Sent = e.Sent
 			return
 		}
 		*cur = e
