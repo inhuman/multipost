@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -19,6 +20,9 @@ const (
 	tgAlbumMax   = 10
 
 	tgAPI = "https://api.telegram.org"
+
+	tgScanMisses = 20
+	tgScanMax    = 500
 )
 
 // Telegram posts to a channel through a bot that is its admin. Chat is
@@ -26,8 +30,12 @@ const (
 type Telegram struct {
 	Token string
 	Chat  string
-	API   string // tgAPI; a fake server in tests
-	Route routeFunc
+	// LogChat is a private chat where the bot is admin: a bot can't read
+	// its channel's history, but a channel post forwarded there comes back
+	// with its text. Empty: unknown outcomes can't be checked.
+	LogChat string
+	API     string // tgAPI; a fake server in tests
+	Route   routeFunc
 }
 
 func (t *Telegram) Name() string { return "tg" }
@@ -68,7 +76,68 @@ func (t *Telegram) Publish(ctx context.Context, p *Post) (Result, error) {
 	if err != nil || caption != "" {
 		return res, err
 	}
-	return t.sendText(ctx, htmlText)
+	msg, err := t.sendText(ctx, htmlText)
+	if err == nil {
+		return msg, nil
+	}
+	// The media went out without its text: take it back, so the retry
+	// posts the whole thing once. What can't be removed is reported.
+	if cerr := t.Cleanup(ctx, res.sent); cerr != nil {
+		return Result{}, &halfSentError{Sent: res.sent, Err: errors.Join(err, cerr)}
+	}
+	return Result{}, err
+}
+
+// Cleanup deletes channel messages by id.
+func (t *Telegram) Cleanup(ctx context.Context, ids []string) error {
+	var errs []error
+	for _, id := range ids {
+		var r tgReply[bool]
+		if err := t.call(ctx, "deleteMessage", map[string]string{"chat_id": t.Chat, "message_id": id}, nil, &r); err != nil {
+			errs = append(errs, fmt.Errorf("delete %s: %w", id, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// FindPost scans the channel from the message after sinceID: each id is
+// forwarded to LogChat, its text compared, the forward deleted. Ids are
+// sequential per channel with gaps for deleted messages, so the scan ends
+// after tgScanMisses missing ids in a row.
+func (t *Telegram) FindPost(ctx context.Context, sinceID int64, hash string) (Result, bool, error) {
+	if t.LogChat == "" {
+		return Result{}, false, errors.New("TG_LOG_CHAT is not set: can't read the channel")
+	}
+	misses := 0
+	for id := sinceID + 1; misses < tgScanMisses && id <= sinceID+tgScanMax; id++ {
+		var r tgReply[struct {
+			MessageID int64  `json:"message_id"`
+			Text      string `json:"text"`
+			Caption   string `json:"caption"`
+		}]
+		sid := strconv.FormatInt(id, 10)
+		err := t.call(ctx, "forwardMessage", map[string]string{
+			"chat_id": t.LogChat, "from_chat_id": t.Chat, "message_id": sid, "disable_notification": "true",
+		}, nil, &r)
+		if he, ok := errors.AsType[*httpError](err); ok && he.Status == http.StatusBadRequest {
+			misses++
+			continue
+		}
+		if err != nil {
+			return Result{}, false, err
+		}
+		misses = 0
+		var del tgReply[bool]
+		if err := t.call(ctx, "deleteMessage", map[string]string{
+			"chat_id": t.LogChat, "message_id": strconv.FormatInt(r.Result.MessageID, 10),
+		}, nil, &del); err != nil {
+			return Result{}, false, fmt.Errorf("delete forward from log chat: %w", err)
+		}
+		if textHash(r.Result.Text+r.Result.Caption) == hash {
+			return t.result(id), true, nil
+		}
+	}
+	return Result{}, false, nil
 }
 
 type tgMessage struct {
@@ -92,11 +161,13 @@ func (t *Telegram) call(ctx context.Context, method string, fields map[string]st
 		return err
 	}
 	req.Header.Set("Content-Type", ctype)
-	if err := doJSON(req, out); err != nil {
-		// The URL carries the token; keep it out of logs.
-		return errors.New(strings.ReplaceAll(err.Error(), t.Token, "<token>"))
+	err = doJSON(req, out)
+	// The URL carries the token; keep it out of logs, keep the error's type:
+	// a transport error means the outcome is unknown.
+	if ue, ok := errors.AsType[*url.Error](err); ok {
+		ue.URL = strings.ReplaceAll(ue.URL, t.Token, "<token>")
 	}
-	return nil
+	return err
 }
 
 func (t *Telegram) sendText(ctx context.Context, htmlText string) (Result, error) {
@@ -155,13 +226,20 @@ func (t *Telegram) sendMedia(ctx context.Context, media []string, caption string
 		return Result{}, err
 	}
 	if len(r.Result) == 0 {
-		return Result{}, errors.New("sendMediaGroup: empty result")
+		return Result{}, fmt.Errorf("%w: sendMediaGroup: empty result", errAmbiguous)
 	}
-	return t.result(r.Result[0].MessageID), nil
+	ids := make([]int64, 0, len(r.Result)-1)
+	for _, m := range r.Result[1:] {
+		ids = append(ids, m.MessageID)
+	}
+	return t.result(r.Result[0].MessageID, ids...), nil
 }
 
-func (t *Telegram) result(id int64) Result {
+func (t *Telegram) result(id int64, more ...int64) Result {
 	r := Result{ID: strconv.FormatInt(id, 10)}
+	for _, m := range append([]int64{id}, more...) {
+		r.sent = append(r.sent, strconv.FormatInt(m, 10))
+	}
 	if name, ok := strings.CutPrefix(t.Chat, "@"); ok {
 		r.URL = "https://t.me/" + name + "/" + r.ID
 	}

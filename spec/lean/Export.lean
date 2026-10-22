@@ -17,10 +17,11 @@ import MultipostSpec
   "../targets-select.json"
 
 #evident_export "state.no-double-post" NoDoublePost.run
-  ["a_posted", "a_result", "b_posted", "b_result", "force"] "outcome"
-  [NoDoublePost.no_double_post, NoDoublePost.failure_not_recorded,
-   NoDoublePost.failure_does_not_stop_others, NoDoublePost.success_recorded,
-   NoDoublePost.fails_iff_attempt_failed, NoDoublePost.record_never_lost]
+  ["record", "found_by", "remote", "result", "force"] "outcome"
+  [NoDoublePost.no_double_post, NoDoublePost.unknown_never_retried_blindly,
+   NoDoublePost.journaled_before_publish, NoDoublePost.maybe_sent_never_forgotten,
+   NoDoublePost.rejected_changes_nothing, NoDoublePost.posted_never_lost,
+   NoDoublePost.found_is_recorded, NoDoublePost.fails_iff, NoDoublePost.next_always_runs]
   "../no-double-post.json"
 
 #evident_export "post.text" PostText.textFor ["mode", "paid", "link"] "text"

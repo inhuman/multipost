@@ -145,6 +145,30 @@ func (m *Max) do(ctx context.Context, method, path string, body []byte, out any)
 	return doJSON(req, out)
 }
 
+// FindPost looks for the post among the channel's latest 100 messages
+// (the API's maximum; sinceID is not needed, MAX lists history itself).
+func (m *Max) FindPost(ctx context.Context, _ int64, hash string) (Result, bool, error) {
+	var reply struct {
+		Messages []struct {
+			URL  string `json:"url"`
+			Body struct {
+				Mid  string `json:"mid"`
+				Text string `json:"text"`
+			} `json:"body"`
+		} `json:"messages"`
+	}
+	path := "/messages?count=100&chat_id=" + strconv.FormatInt(m.ChatID, 10)
+	if err := m.do(ctx, http.MethodGet, path, nil, &reply); err != nil {
+		return Result{}, false, err
+	}
+	for _, msg := range reply.Messages {
+		if textHash(msg.Body.Text) == hash {
+			return Result{ID: msg.Body.Mid, URL: msg.URL}, true, nil
+		}
+	}
+	return Result{}, false, nil
+}
+
 // Chats lists the chats and channels the bot is in, to find MAX_CHAT_ID.
 func (m *Max) Chats(ctx context.Context) ([]maxChat, error) {
 	var reply struct {

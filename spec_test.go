@@ -9,8 +9,10 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,6 +23,7 @@ import (
 	"github.com/inhuman/multipost/spec"
 	"github.com/playwright-community/playwright-go"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestMain(m *testing.M) {
@@ -210,60 +213,105 @@ func TestTargetsSelectOverModel(t *testing.T) {
 	})
 }
 
-// scriptedTarget publishes with a fixed outcome and counts the attempts.
+// scriptedTarget publishes with a fixed outcome; at the moment of the call
+// it reads the journal from disk, as a crash right then would leave it.
 type scriptedTarget struct {
-	name     string
-	fail     bool
-	attempts *[]string
+	name           string
+	result         string
+	journal, dir   string
+	hash           string
+	attempted      bool
+	journaledFirst bool
 }
 
 func (s *scriptedTarget) Name() string { return s.name }
 
 func (s *scriptedTarget) Publish(context.Context, *Post) (Result, error) {
-	*s.attempts = append(*s.attempts, s.name)
-	if s.fail {
-		return Result{}, errors.New("scripted failure")
+	s.attempted = true
+	if j, err := loadJournal(s.journal); err == nil {
+		s.journaledFirst = j.find(s.name, s.dir, s.hash) != nil
 	}
-	return Result{ID: "1"}, nil
+	switch s.result {
+	case "rejected":
+		return Result{}, &httpError{Status: http.StatusBadRequest, Body: "chat not found"}
+	case "lost":
+		return Result{}, &url.Error{Op: "Post", URL: "https://api.example", Err: errors.New("connection reset by peer")}
+	case "halfSent":
+		return Result{}, &halfSentError{Sent: []string{"5"}, Err: errors.New("text message failed")}
+	}
+	return Result{ID: "7"}, nil
+}
+
+// listingTarget can also look at its own history.
+type listingTarget struct {
+	scriptedTarget
+	found bool
+}
+
+func (l *listingTarget) FindPost(context.Context, int64, string) (Result, bool, error) {
+	if l.found {
+		return Result{ID: "6"}, true, nil
+	}
+	return Result{}, false, nil
 }
 
 func TestNoDoublePostOverModel(t *testing.T) {
 	eachRow(t, spec.NoDoublePost, func(t *testing.T, row evident.Facts) {
-		dir := t.TempDir()
-		state := State{}
-		for _, n := range []string{"a", "b"} {
-			if row[n+"_posted"] == true {
-				state[n] = Posted{Result: Result{ID: "old"}}
+		root := t.TempDir()
+		journalPath := filepath.Join(root, "journal.json")
+		post := &Post{Dir: filepath.Join(root, "2026-10-23-post"), Mode: modeFull, Body: "Пост про **бутылку**"}
+		hash := textHash(toPlainNoURL(post.TextFor(false)))
+
+		j, err := loadJournal(journalPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rec := row["record"].(string); rec != "none" {
+			e := Entry{Target: "a", Dir: post.Dir, Hash: hash, Status: rec, ID: "3"}
+			if row["found_by"] == "text" {
+				e.Dir, e.Hash = filepath.Join(root, "same-text-other-folder"), hash
 			}
+			j.put(e)
 		}
-		if err := state.save(dir); err != nil {
+		if err := j.save(); err != nil {
 			t.Fatal(err)
 		}
-		state, err := loadState(dir)
+
+		script := scriptedTarget{name: "a", result: row["result"].(string), journal: journalPath, dir: post.Dir, hash: hash}
+		var a Target = &script
+		var listing *listingTarget
+		if row["remote"] != "cannotList" {
+			listing = &listingTarget{scriptedTarget: script, found: row["remote"] == "found"}
+			a = listing
+		}
+		next := &scriptedTarget{name: "next", result: "ok", journal: journalPath, dir: post.Dir}
+
+		core, logs := observer.New(zap.InfoLevel)
+		failed, err := publishAll(t.Context(), zap.New(core), post, []Target{a, next}, j, row["force"].(bool))
 		if err != nil {
 			t.Fatal(err)
 		}
-		attempts := []string{}
-		targets := []Target{
-			&scriptedTarget{name: "a", fail: row["a_result"] == "fail", attempts: &attempts},
-			&scriptedTarget{name: "b", fail: row["b_result"] == "fail", attempts: &attempts},
+		if listing != nil {
+			script = listing.scriptedTarget
 		}
-		failed, err := publishAll(t.Context(), zap.NewNop(), &Post{Dir: dir}, targets, state, row["force"].(bool))
+
+		after, err := loadJournal(journalPath)
 		if err != nil {
 			t.Fatal(err)
 		}
-		after, err := loadState(dir)
-		if err != nil {
-			t.Fatal(err)
+		record := "none"
+		if e := after.find("a", post.Dir, hash); e != nil {
+			record = e.Status
 		}
-		recorded := []string{}
-		for _, n := range []string{"a", "b"} {
-			if _, ok := after[n]; ok {
-				recorded = append(recorded, n)
+		warned := false
+		for _, e := range logs.FilterLevelExact(zap.WarnLevel).All() {
+			if e.ContextMap()["target"] == "a" {
+				warned = true
 			}
 		}
 		witness("state.no-double-post", row, "outcome", map[string]any{
-			"attempted": attempts, "recorded": recorded, "failed": len(failed) > 0,
+			"attempted": script.attempted, "journaledFirst": script.journaledFirst, "record": record,
+			"warned": warned, "failed": slices.Contains(failed, "a"), "nextAttempted": next.attempted,
 		})
 	})
 }

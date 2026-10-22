@@ -1,7 +1,6 @@
 /multipost
 .env
 *.env
-.multipost.json
 .multipost-*-fail.png
 
 .idea/

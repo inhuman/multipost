@@ -20,7 +20,8 @@ import (
 
 type Config struct {
 	TGBotToken  string `env:"TG_BOT_TOKEN"`
-	TGChat      string `env:"TG_CHAT"` // @channel or -100…
+	TGChat      string `env:"TG_CHAT"`     // @channel or -100…
+	TGLogChat   string `env:"TG_LOG_CHAT"` // private chat, bot admin: lets it read the channel
 	MaxBotToken string `env:"MAX_BOT_TOKEN"`
 	MaxChatID   string `env:"MAX_CHAT_ID"`     // empty in the template until max-chats tells it
 	VKURL       string `env:"VK_URL"`          // community page, https://vk.com/club…
@@ -140,11 +141,11 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 		return printPlan(ctx, post, targets)
 	}
 
-	state, err := loadState(post.Dir)
+	journal, err := loadJournal(filepath.Join(filepath.Dir(*envPath), "journal.json"))
 	if err != nil {
 		return err
 	}
-	failed, err := publishAll(ctx, log, post, targets, state, *force)
+	failed, err := publishAll(ctx, log, post, targets, journal, *force)
 	if err != nil {
 		return err
 	}
@@ -181,29 +182,82 @@ func selectTargets(cfg Config, names []string, log *zap.Logger) ([]Target, error
 	return targets, nil
 }
 
-// publishAll posts to every target in order. A target the post already
-// reached is skipped unless force; a failure is logged and the rest still
-// go; state is saved after each success, so a crash never forgets a post.
-func publishAll(ctx context.Context, log *zap.Logger, post *Post, targets []Target, state State, force bool) ([]string, error) {
+// publishAll posts to every target in order (spec: NoDoublePost). The
+// journal entry goes to disk as pending BEFORE the platform is called, so a
+// crash at any point leaves a trace; a pending entry from an earlier run is
+// resolved by the platform's own history, never by posting blindly.
+func publishAll(ctx context.Context, log *zap.Logger, post *Post, targets []Target, j *Journal, force bool) ([]string, error) {
 	var failed []string
 	for _, t := range targets {
-		l := log.With(zap.String("target", t.Name()))
-		if prev, ok := state[t.Name()]; ok && !force {
-			l.Info("already posted, skip (-force to repeat)", zap.String("url", prev.URL), zap.Time("at", prev.At))
-			continue
+		name := t.Name()
+		l := log.With(zap.String("target", name))
+		hash := textHash(toPlainNoURL(post.TextFor(paidTargets[name])))
+		e := j.find(name, post.Dir, hash)
+
+		if e != nil && !force {
+			if e.Status == statusPosted {
+				l.Info("already posted, skip (-force to repeat)", zap.String("url", e.URL), zap.String("dir", e.Dir))
+				continue
+			}
+			hf, ok := t.(historyFinder)
+			if !ok {
+				l.Warn("previous attempt has unknown outcome and this platform can't be checked: skipped")
+				failed = append(failed, name)
+				continue
+			}
+			res, found, err := hf.FindPost(ctx, j.lastID(name), hash)
+			if err != nil {
+				l.Warn("previous attempt has unknown outcome, history check failed: skipped", zap.Error(err))
+				failed = append(failed, name)
+				continue
+			}
+			if found {
+				j.put(Entry{Target: name, Dir: post.Dir, Hash: hash, Status: statusPosted, ID: res.ID, URL: res.URL})
+				if err := j.save(); err != nil {
+					return failed, err
+				}
+				l.Warn("previous attempt did post: found on the platform, recorded", zap.String("url", res.URL))
+				continue
+			}
+			if c, ok := t.(cleaner); ok && len(e.Sent) > 0 {
+				if err := c.Cleanup(ctx, e.Sent); err != nil {
+					l.Warn("half-sent post can't be removed: skipped", zap.Strings("sent", e.Sent), zap.Error(err))
+					failed = append(failed, name)
+					continue
+				}
+			}
+		}
+
+		var prev *Entry
+		if cur := j.entryFor(name, post.Dir); cur != nil {
+			prev = new(*cur)
+		}
+		j.put(Entry{Target: name, Dir: post.Dir, Hash: hash, Status: statusPending})
+		if err := j.save(); err != nil {
+			return failed, err
 		}
 		start := time.Now()
 		res, err := t.Publish(ctx, post)
-		if err != nil {
-			l.Error("publish failed", zap.Error(err))
-			failed = append(failed, t.Name())
-			continue
+		switch classify(err) {
+		case resultOK:
+			j.put(Entry{Target: name, Dir: post.Dir, Hash: hash, Status: statusPosted, ID: res.ID, URL: res.URL})
+			l.Info("posted", zap.String("id", res.ID), zap.String("url", res.URL), zap.Duration("took", time.Since(start)))
+		case resultRejected:
+			j.restore(name, post.Dir, prev)
+			l.Error("publish rejected, nothing went out", zap.Error(err))
+			failed = append(failed, name)
+		case resultLost:
+			l.Error("publish outcome unknown, the next run checks the platform", zap.Error(err))
+			failed = append(failed, name)
+		case resultHalfSent:
+			hs, _ := errors.AsType[*halfSentError](err)
+			j.put(Entry{Target: name, Dir: post.Dir, Hash: hash, Status: statusPending, Sent: hs.Sent})
+			l.Error("post half sent, the next run removes the part and retries", zap.Error(err))
+			failed = append(failed, name)
 		}
-		state[t.Name()] = Posted{Result: res, At: time.Now()}
-		if err := state.save(post.Dir); err != nil {
+		if err := j.save(); err != nil {
 			return failed, err
 		}
-		l.Info("posted", zap.String("id", res.ID), zap.String("url", res.URL), zap.Duration("took", time.Since(start)))
 	}
 	return failed, nil
 }
@@ -219,7 +273,7 @@ func buildTarget(cfg Config, name string) (Target, error) {
 		if cfg.TGBotToken == "" || cfg.TGChat == "" {
 			return nil, missing("TG_BOT_TOKEN", "TG_CHAT")
 		}
-		return &Telegram{Token: cfg.TGBotToken, Chat: cfg.TGChat, API: tgAPI, Route: checkRoute}, nil
+		return &Telegram{Token: cfg.TGBotToken, Chat: cfg.TGChat, LogChat: cfg.TGLogChat, API: tgAPI, Route: checkRoute}, nil
 	case "max":
 		if cfg.MaxBotToken == "" || cfg.MaxChatID == "" {
 			return nil, missing("MAX_BOT_TOKEN", "MAX_CHAT_ID")
