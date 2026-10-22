@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,15 +14,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Post is one publication: a directory with post.md (front matter + full
-// text), optional teaser.md and media files.
+// Post is one publication: a directory with post.md (optional front matter
+// + full text), optional teaser.md, and media/ — every image and video in
+// it is attached, in name order. Media lying next to post.md is ignored:
+// post folders also keep drafts, figures' sources and scripts.
 type Post struct {
 	Dir     string   `yaml:"-"`
 	Title   string   `yaml:"title"`
 	Mode    string   `yaml:"mode"`     // full | teaser
 	PaidURL string   `yaml:"paid_url"` // appended to the teaser on public targets
 	Targets []string `yaml:"targets"`
-	Media   []string `yaml:"media"`
+	Media   []string `yaml:"-"`
 
 	Body   string `yaml:"-"`
 	Teaser string `yaml:"-"`
@@ -81,27 +85,21 @@ func loadPost(dir string) (*Post, error) {
 		return nil, fmt.Errorf("mode %q: want full or teaser", p.Mode)
 	}
 
-	if len(p.Media) == 0 {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return nil, err
-		}
-		for _, e := range entries {
-			if !e.IsDir() && kindOf(e.Name()) != "" {
-				p.Media = append(p.Media, e.Name())
-			}
-		}
-		slices.Sort(p.Media)
+	mediaDir := filepath.Join(dir, "media")
+	entries, err := os.ReadDir(mediaDir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
 	}
-	for i, m := range p.Media {
-		if kindOf(m) == "" {
-			return nil, fmt.Errorf("media %q: unknown type", m)
+	for _, e := range entries {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
 		}
-		p.Media[i] = filepath.Join(dir, m)
-		if _, err := os.Stat(p.Media[i]); err != nil {
-			return nil, err
+		if kindOf(e.Name()) == "" {
+			return nil, fmt.Errorf("media/%s: not an image or video (%v)", e.Name(), slices.Sorted(maps.Keys(mediaExts)))
 		}
+		p.Media = append(p.Media, filepath.Join(mediaDir, e.Name()))
 	}
+	slices.Sort(p.Media)
 	return p, nil
 }
 

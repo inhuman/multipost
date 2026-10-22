@@ -9,16 +9,16 @@
 
 ## Пост
 
-Каталог с `post.md`, а при `mode: teaser` ещё и с `teaser.md`. Медиа лежат
-рядом, по умолчанию берутся все картинки и видео каталога по имени.
+Каталог с `post.md`, при `mode: teaser` ещё и с `teaser.md`. Медиа — всё
+из подкаталога `media/` (картинки и видео, по имени); что лежит рядом
+с `post.md`, не прикладывается. Front matter не обязателен.
 
 ```markdown
 ---
 title: Неделя 12
 mode: teaser            # full — всем полный текст; teaser — тизер + paid_url
 paid_url: https://boosty.to/…/posts/…
-targets: [tg, max, vk, boosty, sponsr]   # по умолчанию все
-media: [01.jpg, walk.mp4]                # по умолчанию все медиа каталога
+targets: [tg, max, vk, boosty, sponsr]   # по умолчанию все настроенные
 ---
 Полный текст. **жирный**, *курсив*, `код`, [ссылка](https://…).
 ```
@@ -29,7 +29,7 @@ Boosty и Sponsr получают полный текст, остальные �
 
 ```
 go install github.com/inhuman/multipost@latest   # или go install . из клона
-multipost -dry-run post/      # что куда уйдёт и годен ли маршрут
+multipost -dry-run 2026-10-23-slug   # имя в POSTS_DIR или путь; что куда уйдёт
 multipost post/
 multipost -only max post/     # одна площадка
 ```
@@ -55,6 +55,7 @@ Telegram доступен только через VPN, MAX и VK — тольк�
 | `VK_URL` | страница сообщества, `https://vk.com/club…` |
 | `BOOSTY_URL` | `https://boosty.to/<блог>` |
 | `SPONSR_URL` | `https://sponsr.ru/<проект>/` |
+| `POSTS_DIR` | где искать пост по имени |
 | `BROWSER_HEADLESS` | `true` — браузер без окна (по умолчанию окно видно) |
 
 Браузерным площадкам нужен вход один раз: `multipost login vk`

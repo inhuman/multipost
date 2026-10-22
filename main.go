@@ -4,12 +4,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,10 +23,11 @@ type Config struct {
 	TGBotToken  string `env:"TG_BOT_TOKEN"`
 	TGChat      string `env:"TG_CHAT"` // @channel or -100…
 	MaxBotToken string `env:"MAX_BOT_TOKEN"`
-	MaxChatID   int64  `env:"MAX_CHAT_ID"`
+	MaxChatID   string `env:"MAX_CHAT_ID"` // empty in the template until max-chats tells it
 	VKURL       string `env:"VK_URL"`     // community page, https://vk.com/club…
 	BoostyURL   string `env:"BOOSTY_URL"` // https://boosty.to/<blog>
 	SponsrURL   string `env:"SPONSR_URL"` // https://sponsr.ru/<project>/
+	PostsDir    string `env:"POSTS_DIR"`  // a bare post name is looked up here
 	Headless    bool   `env:"BROWSER_HEADLESS" env-default:"false"`
 }
 
@@ -32,7 +35,8 @@ var allTargets = []string{"tg", "max", "vk", "boosty", "sponsr"}
 
 const usage = `multipost — один пост на все площадки
 
-  multipost [-only tg,max] [-dry-run] [-force] <каталог поста>
+  multipost [-only tg,max] [-dry-run] [-force] <пост>
+      <пост> — каталог или имя подкаталога в POSTS_DIR
   multipost login vk|boosty|sponsr   войти в браузерном профиле (один раз)
   multipost max-chats                 чаты бота MAX, для MAX_CHAT_ID
 
@@ -105,7 +109,7 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 		return nil
 	}
 
-	post, err := loadPost(fs.Arg(0))
+	post, err := loadPost(resolvePostDir(cfg.PostsDir, fs.Arg(0)))
 	if err != nil {
 		return err
 	}
@@ -113,16 +117,26 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 	if *only != "" {
 		names = strings.Split(*only, ",")
 	}
-	if len(names) == 0 {
+	// Named targets must all be set up; by default every configured one
+	// goes and the rest are only reported.
+	explicit := len(names) > 0
+	if !explicit {
 		names = allTargets
 	}
 	targets := make([]Target, 0, len(names))
 	for _, n := range names {
 		t, err := buildTarget(cfg, strings.TrimSpace(n))
+		if err != nil && !explicit && errors.Is(err, errNotConfigured) {
+			log.Info("not configured, skip", zap.String("target", n))
+			continue
+		}
 		if err != nil {
 			return err
 		}
 		targets = append(targets, t)
+	}
+	if len(targets) == 0 {
+		return errors.New("no target configured in ~/.config/multipost/.env")
 	}
 
 	if *dryRun {
@@ -159,9 +173,18 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 	return nil
 }
 
+var errNotConfigured = errors.New("not configured")
+
+func resolvePostDir(postsDir, arg string) string {
+	if _, err := os.Stat(arg); err == nil || postsDir == "" || filepath.IsAbs(arg) {
+		return arg
+	}
+	return filepath.Join(postsDir, arg)
+}
+
 func buildTarget(cfg Config, name string) (Target, error) {
 	missing := func(vars ...string) error {
-		return fmt.Errorf("target %s: set %s in ~/.config/multipost/.env", name, strings.Join(vars, ", "))
+		return fmt.Errorf("target %s: set %s in ~/.config/multipost/.env: %w", name, strings.Join(vars, ", "), errNotConfigured)
 	}
 	switch name {
 	case "tg":
@@ -170,14 +193,21 @@ func buildTarget(cfg Config, name string) (Target, error) {
 		}
 		return &Telegram{Token: cfg.TGBotToken, Chat: cfg.TGChat}, nil
 	case "max":
-		if cfg.MaxBotToken == "" || cfg.MaxChatID == 0 {
+		if cfg.MaxBotToken == "" || cfg.MaxChatID == "" {
 			return nil, missing("MAX_BOT_TOKEN", "MAX_CHAT_ID")
 		}
-		return &Max{Token: cfg.MaxBotToken, ChatID: cfg.MaxChatID}, nil
+		id, err := strconv.ParseInt(cfg.MaxChatID, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("MAX_CHAT_ID: %w", err)
+		}
+		return &Max{Token: cfg.MaxBotToken, ChatID: id}, nil
 	case "vk", "boosty", "sponsr":
 		url := map[string]string{"vk": cfg.VKURL, "boosty": cfg.BoostyURL, "sponsr": cfg.SponsrURL}[name]
 		if url == "" {
 			return nil, missing(strings.ToUpper(name) + "_URL")
+		}
+		if browserFlows[name] == nil {
+			return nil, fmt.Errorf("target %s: browser flow not recorded yet: %w", name, errNotConfigured)
 		}
 		route := map[string]routeWant{"vk": viaDirect, "boosty": viaAny, "sponsr": viaAny}[name]
 		return &BrowserTarget{name: name, startURL: url, headless: cfg.Headless, route: route, flow: browserFlows[name]}, nil

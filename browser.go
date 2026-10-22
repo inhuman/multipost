@@ -108,9 +108,6 @@ var browserFlows = map[string]siteFlow{}
 func (b *BrowserTarget) Name() string { return b.name }
 
 func (b *BrowserTarget) Publish(ctx context.Context, p *Post) (Result, error) {
-	if b.flow == nil {
-		return Result{}, fmt.Errorf("%s: browser flow not recorded yet (T-095)", b.name)
-	}
 	if err := checkRoute(ctx, b.startURL, b.route); err != nil {
 		return Result{}, err
 	}
