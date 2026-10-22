@@ -28,7 +28,7 @@ Boosty и Sponsr получают полный текст, остальные �
 ## Запуск
 
 ```
-go build -o ~/bin/multipost .
+go install github.com/inhuman/multipost@latest   # или go install . из клона
 multipost -dry-run post/      # что куда уйдёт и годен ли маршрут
 multipost post/
 multipost -only max post/     # одна площадка

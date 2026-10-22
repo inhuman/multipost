@@ -1,4 +1,4 @@
-module github.com/inhuman/mr-robot/tools/multipost
+module github.com/inhuman/multipost
 
 go 1.26.1
 
