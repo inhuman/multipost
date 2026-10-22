@@ -59,3 +59,20 @@ Telegram доступен только через VPN, MAX и VK — тольк�
 
 Браузерным площадкам нужен вход один раз: `multipost login vk`
 (аналогично `boosty`, `sponsr`). Профиль хранится в `~/.config/multipost/browser`.
+
+## Драйвер Playwright
+
+Официальный CDN драйвера (azureedge) отвечает 404, поэтому
+`playwright.Install` скачать драйвер не может. Драйвер собирается
+из npm-пакета той версии, которую требует `playwright-go` в go.mod:
+
+```
+D=~/.cache/ms-playwright-go/1.60.0
+npm pack playwright-core@1.60.0 && tar xzf playwright-core-1.60.0.tgz
+mkdir -p $D && mv package $D/ && ln -sf "$(command -v node)" $D/node
+sed -i -e 's/pageError\.location\.url/pageError.location?.url || ""/g' \
+  -e 's/pageError\.location\.lineNumber/pageError.location?.lineNumber || 0/g' \
+  -e 's/pageError\.location\.columnNumber/pageError.location?.columnNumber || 0/g' \
+  $D/package/lib/coreBundle.js     # тот же патч, что делает playwright-go
+$D/node $D/package/cli.js install chromium
+```

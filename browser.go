@@ -52,6 +52,10 @@ func openBrowser(headless bool) (*browserSession, error) {
 	return &browserSession{pw: pw, ctx: bctx}, nil
 }
 
+// Russian sites hang the "load" event on a stuck counter or ad script
+// (sponsr.ru: 30 s timeout via browser, 0.5 s via curl).
+var domContentLoaded = playwright.PageGotoOptions{WaitUntil: playwright.WaitUntilStateDomcontentloaded}
+
 func (s *browserSession) Close() error {
 	return errors.Join(s.ctx.Close(), s.pw.Stop())
 }
@@ -68,7 +72,7 @@ func login(ctx context.Context, startURL string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := page.Goto(startURL); err != nil {
+	if _, err := page.Goto(startURL, domContentLoaded); err != nil {
 		return err
 	}
 	fmt.Println("Войди в аккаунт в открытом окне и закрой его — сессия сохранится в профиле.")
@@ -119,7 +123,7 @@ func (b *BrowserTarget) Publish(ctx context.Context, p *Post) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if _, err := page.Goto(b.startURL); err != nil {
+	if _, err := page.Goto(b.startURL, domContentLoaded); err != nil {
 		return Result{}, err
 	}
 	res, err := b.flow(ctx, page, p)
