@@ -3,7 +3,7 @@ import Evident
 /-!
 # Which way a platform's traffic may leave the machine
 
-Telegram works only through the VPN; MAX and VK only past it (through the
+Telegram works only through the VPN; MAX only past it (through the
 VPN they hang or serve anti-bot stubs); Boosty and Sponsr work either way.
 Before a host is used, every IPv4 address it resolves to is checked: the
 HTTP client may pick any of them, so one address on the wrong side is

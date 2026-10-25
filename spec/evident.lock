@@ -34,14 +34,14 @@
     }
   },
   "targets.select": {
-    "table_sha256": "149c08412d9c6e79b94d9f52a7a96ab1be763a9ed7bfc1775c07595f9751a7f8",
+    "table_sha256": "251a21f3d5be9eaf845754a0d8f1c68c5eba9d372b697617e8fec9e1453b2ed3",
     "theorems": {
-      "TargetSelect.default_takes_every_ready": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk) (t : TargetSelect.Target),\n  mx ≠ TargetSelect.MaxCfg.badId →\n    TargetSelect.setup tg mx vk t = TargetSelect.Setup.ready →\n      t ∈ (TargetSelect.choose tg mx vk TargetSelect.Request.byDefault).selected",
-      "TargetSelect.failure_posts_nowhere": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk) (req : TargetSelect.Request),\n  (TargetSelect.choose tg mx vk req).failed = Bool.true → (TargetSelect.choose tg mx vk req).selected = []",
-      "TargetSelect.named_is_all_or_nothing": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk) (req : TargetSelect.Request),\n  req ≠ TargetSelect.Request.byDefault →\n    (TargetSelect.choose tg mx vk req).failed = Bool.false →\n      (TargetSelect.choose tg mx vk req).selected = TargetSelect.named req",
-      "TargetSelect.never_selects_unready": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk) (req : TargetSelect.Request)\n  (t : TargetSelect.Target),\n  t ∈ (TargetSelect.choose tg mx vk req).selected → TargetSelect.setup tg mx vk t = TargetSelect.Setup.ready",
-      "TargetSelect.typo_is_loud": "∀ (tg : TargetSelect.Tg) (vk : TargetSelect.Vk) (req : TargetSelect.Request),\n  TargetSelect.Target.max ∈ TargetSelect.named req →\n    (TargetSelect.choose tg TargetSelect.MaxCfg.badId vk req).failed = Bool.true",
-      "TargetSelect.unasked_does_not_block": "∀ (mx : TargetSelect.MaxCfg) (vk : TargetSelect.Vk),\n  TargetSelect.choose TargetSelect.Tg.ready mx vk TargetSelect.Request.onlyTg =\n    { selected := [TargetSelect.Target.tg], failed := Bool.false }"
+      "TargetSelect.default_takes_every_ready": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (boosty : TargetSelect.Boosty) (t : TargetSelect.Target),\n  mx ≠ TargetSelect.MaxCfg.badId →\n    TargetSelect.setup tg mx boosty t = TargetSelect.Setup.ready →\n      t ∈ (TargetSelect.choose tg mx boosty TargetSelect.Request.byDefault).selected",
+      "TargetSelect.failure_posts_nowhere": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (boosty : TargetSelect.Boosty) (req : TargetSelect.Request),\n  (TargetSelect.choose tg mx boosty req).failed = Bool.true → (TargetSelect.choose tg mx boosty req).selected = []",
+      "TargetSelect.named_is_all_or_nothing": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (boosty : TargetSelect.Boosty) (req : TargetSelect.Request),\n  req ≠ TargetSelect.Request.byDefault →\n    (TargetSelect.choose tg mx boosty req).failed = Bool.false →\n      (TargetSelect.choose tg mx boosty req).selected = TargetSelect.named req",
+      "TargetSelect.never_selects_unready": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (boosty : TargetSelect.Boosty) (req : TargetSelect.Request)\n  (t : TargetSelect.Target),\n  t ∈ (TargetSelect.choose tg mx boosty req).selected → TargetSelect.setup tg mx boosty t = TargetSelect.Setup.ready",
+      "TargetSelect.typo_is_loud": "∀ (tg : TargetSelect.Tg) (boosty : TargetSelect.Boosty) (req : TargetSelect.Request),\n  TargetSelect.Target.max ∈ TargetSelect.named req →\n    (TargetSelect.choose tg TargetSelect.MaxCfg.badId boosty req).failed = Bool.true",
+      "TargetSelect.unasked_does_not_block": "∀ (mx : TargetSelect.MaxCfg) (boosty : TargetSelect.Boosty),\n  TargetSelect.choose TargetSelect.Tg.ready mx boosty TargetSelect.Request.onlyTg =\n    { selected := [TargetSelect.Target.tg], failed := Bool.false }"
     }
   },
   "tg.layout": {

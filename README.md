@@ -1,11 +1,10 @@
 # multipost
 
-Один пост → Telegram, MAX, VK, Boosty, Sponsr. Локальная утилита.
+Один пост → Telegram, MAX, Boosty, Sponsr. Локальная утилита.
 
 - **Telegram, MAX** — через Bot API.
-- **VK, Boosty, Sponsr** — через браузер (Playwright) с постоянным профилем.
-  У Boosty и Sponsr нет API публикации. VK даёт права `wall`/`photos`
-  токену пользователя только по запросу в поддержку.
+- **Boosty, Sponsr** — через браузер (Playwright) с постоянным профилем.
+  У Boosty и Sponsr нет API публикации.
 
 ## Пост
 
@@ -18,7 +17,7 @@
 title: Неделя 12
 mode: teaser            # full — всем полный текст; teaser — тизер + paid_url
 paid_url: https://boosty.to/…/posts/…
-targets: [tg, max, vk, boosty, sponsr]   # по умолчанию все настроенные
+targets: [tg, max, boosty, sponsr]   # по умолчанию все настроенные
 ---
 Полный текст. **жирный**, *курсив*, `код`, [ссылка](https://…).
 ```
@@ -56,8 +55,8 @@ Telegram-бот не умеет читать свой канал, поэтому
 
 ## Маршрут
 
-Telegram доступен только через VPN, MAX и VK — только мимо него
-(их IP закрепляет `rus-routes.sh`). Перед каждой отправкой утилита
+Telegram доступен только через VPN, MAX — только мимо него
+(его IP закрепляет `rus-routes.sh`). Перед каждой отправкой утилита
 проверяет `ip route get` каждого хоста, включая выданные адреса загрузки,
 и при неверном маршруте отказывается постить.
 
@@ -73,14 +72,13 @@ Telegram доступен только через VPN, MAX и VK — тольк�
 | `TG_LOG_CHAT` | служебный приватный чат (`-100…`), бот — админ: проверка канала после сбоя |
 | `MAX_BOT_TOKEN` | токен бота MAX (dev.max.ru); бот — админ канала |
 | `MAX_CHAT_ID` | id канала: `multipost max-chats` |
-| `VK_URL` | страница сообщества, `https://vk.com/club…` |
 | `BOOSTY_URL` | `https://boosty.to/<блог>` |
 | `SPONSR_URL` | `https://sponsr.ru/<проект>/` |
 | `BROWSER_PROFILE` | профиль браузера; по умолчанию `browser/` рядом с `.env` |
 | `BROWSER_HEADLESS` | `true` — браузер без окна (по умолчанию окно видно) |
 
-Браузерным площадкам нужен вход один раз: `multipost -env … login vk`
-(аналогично `boosty`, `sponsr`). Профиль с сессиями лежит рядом с `.env`,
+Браузерным площадкам нужен вход один раз: `multipost -env … login boosty`
+(аналогично `sponsr`). Профиль с сессиями лежит рядом с `.env`,
 поэтому под `.gitignore` должен быть весь каталог.
 
 ## Драйвер Playwright

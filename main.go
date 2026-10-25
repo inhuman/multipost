@@ -1,5 +1,5 @@
 // multipost publishes one post (a directory with post.md and media) to
-// Telegram, MAX, VK, Boosty and Sponsr in one run.
+// Telegram, MAX, Boosty and Sponsr in one run.
 package main
 
 import (
@@ -24,14 +24,13 @@ type Config struct {
 	TGLogChat   string `env:"TG_LOG_CHAT"` // private chat, bot admin: lets it read the channel
 	MaxBotToken string `env:"MAX_BOT_TOKEN"`
 	MaxChatID   string `env:"MAX_CHAT_ID"`     // empty in the template until max-chats tells it
-	VKURL       string `env:"VK_URL"`          // community page, https://vk.com/club…
 	BoostyURL   string `env:"BOOSTY_URL"`      // https://boosty.to/<blog>
 	SponsrURL   string `env:"SPONSR_URL"`      // https://sponsr.ru/<project>/
 	Profile     string `env:"BROWSER_PROFILE"` // default: browser/ next to the env file
 	Headless    bool   `env:"BROWSER_HEADLESS" env-default:"false"`
 }
 
-var allTargets = []string{"tg", "max", "vk", "boosty", "sponsr"}
+var allTargets = []string{"tg", "max", "boosty", "sponsr"}
 
 // paidTargets get the full post behind their paywall; the rest get the
 // public text.
@@ -40,7 +39,7 @@ var paidTargets = map[string]bool{"boosty": true, "sponsr": true}
 const usage = `multipost — один пост на все площадки
 
   multipost -env <путь/.env> [-only tg,max] [-dry-run] [-force] <каталог поста>
-  multipost -env <путь/.env> login vk|boosty|sponsr   войти в браузерном профиле
+  multipost -env <путь/.env> login boosty|sponsr      войти в браузерном профиле
   multipost -env <путь/.env> max-chats                чаты бота MAX, для MAX_CHAT_ID
 
 Токены и адреса проекта — в его .env (см. README, env.example).
@@ -108,7 +107,7 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 
 	switch fs.Arg(0) {
 	case "login":
-		url := map[string]string{"vk": cfg.VKURL, "boosty": cfg.BoostyURL, "sponsr": cfg.SponsrURL}[fs.Arg(1)]
+		url := map[string]string{"boosty": cfg.BoostyURL, "sponsr": cfg.SponsrURL}[fs.Arg(1)]
 		if url == "" {
 			return fmt.Errorf("login %q: unknown site or its URL is not set in .env", fs.Arg(1))
 		}
@@ -314,15 +313,15 @@ func buildTarget(cfg Config, name string) (Target, error) {
 			return nil, fmt.Errorf("MAX_CHAT_ID: %w", err)
 		}
 		return &Max{Token: cfg.MaxBotToken, ChatID: id, API: maxAPI, Route: checkRoute}, nil
-	case "vk", "boosty", "sponsr":
-		url := map[string]string{"vk": cfg.VKURL, "boosty": cfg.BoostyURL, "sponsr": cfg.SponsrURL}[name]
+	case "boosty", "sponsr":
+		url := map[string]string{"boosty": cfg.BoostyURL, "sponsr": cfg.SponsrURL}[name]
 		if url == "" {
 			return nil, missing(strings.ToUpper(name) + "_URL")
 		}
 		if browserFlows[name] == nil {
 			return nil, fmt.Errorf("target %s: browser flow not recorded yet: %w", name, errNotConfigured)
 		}
-		route := map[string]routeWant{"vk": viaDirect, "boosty": viaAny, "sponsr": viaAny}[name]
+		route := map[string]routeWant{"boosty": viaAny, "sponsr": viaAny}[name]
 		return &BrowserTarget{name: name, startURL: url, profile: cfg.Profile, headless: cfg.Headless, route: route, checker: checkRoute, flow: browserFlows[name]}, nil
 	}
 	return nil, fmt.Errorf("unknown target %q, want one of %v", name, allTargets)

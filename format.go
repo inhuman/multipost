@@ -8,7 +8,7 @@ import (
 )
 
 // Posts are written in a small Markdown subset: **bold**, *italic*,
-// `code`, [text](url). Telegram and MAX get HTML, VK — plain text.
+// `code`, [text](url). Telegram and MAX get HTML.
 
 var (
 	reCode   = regexp.MustCompile("`([^`\n]+)`")

@@ -10,11 +10,10 @@ import (
 	"github.com/playwright-community/playwright-go"
 )
 
-// Platforms without a usable posting API (Boosty, Sponsr; VK gives wall
-// rights to user tokens only on request) are driven through a real browser
-// with a persistent profile: the user logs in once with `multipost login`,
-// the session cookies stay in the profile. The profile lives next to the
-// project's env file unless BROWSER_PROFILE says otherwise.
+// Platforms without a posting API (Boosty, Sponsr) are driven through a real
+// browser with a persistent profile: the user logs in once with `multipost
+// login`, the session cookies stay in the profile. The profile lives next to
+// the project's env file unless BROWSER_PROFILE says otherwise.
 
 type browserSession struct {
 	pw  *playwright.Playwright

@@ -162,17 +162,17 @@ func TestPublishAll(t *testing.T) {
 		{
 			name: "fresh post goes to every target in order",
 			targets: func(ev *[]string) []Target {
-				return []Target{plainT(ev, "tg", nil), histT(ev, "max", nil, nil), plainT(ev, "vk", nil)}
+				return []Target{plainT(ev, "tg", nil), histT(ev, "max", nil, nil), plainT(ev, "other", nil)}
 			},
-			wantEvents: []string{"tg publish", "max publish", "vk publish"},
-			want:       []Entry{newPosted("tg"), newPosted("max"), newPosted("vk")},
+			wantEvents: []string{"tg publish", "max publish", "other publish"},
+			want:       []Entry{newPosted("tg"), newPosted("max"), newPosted("other")},
 		},
 		{
 			name:       "posted entry for the folder: skipped, history not consulted",
 			journal:    []Entry{posted("tg", dirA, hashA, "5")},
-			targets:    func(ev *[]string) []Target { return []Target{histT(ev, "tg", nil, found), plainT(ev, "vk", nil)} },
-			wantEvents: []string{"vk publish"},
-			want:       []Entry{posted("tg", dirA, hashA, "5"), newPosted("vk")},
+			targets:    func(ev *[]string) []Target { return []Target{histT(ev, "tg", nil, found), plainT(ev, "other", nil)} },
+			wantEvents: []string{"other publish"},
+			want:       []Entry{posted("tg", dirA, hashA, "5"), newPosted("other")},
 		},
 		{
 			name:       "posted entry for the folder with an edited text: still skipped",
@@ -190,10 +190,10 @@ func TestPublishAll(t *testing.T) {
 		},
 		{
 			name:       "same text posted on another target does not count",
-			journal:    []Entry{posted("vk", dirA, hashA, "5")},
+			journal:    []Entry{posted("other", dirA, hashA, "5")},
 			targets:    func(ev *[]string) []Target { return []Target{plainT(ev, "tg", nil)} },
 			wantEvents: []string{"tg publish"},
-			want:       []Entry{posted("vk", dirA, hashA, "5"), newPosted("tg")},
+			want:       []Entry{posted("other", dirA, hashA, "5"), newPosted("tg")},
 		},
 		{
 			name:       "other folder, other text: posted",
@@ -205,11 +205,11 @@ func TestPublishAll(t *testing.T) {
 		{
 			name: "rejected: no trace left, the next target still goes",
 			targets: func(ev *[]string) []Target {
-				return []Target{plainT(ev, "tg", fail(errRejected)), plainT(ev, "vk", nil)}
+				return []Target{plainT(ev, "tg", fail(errRejected)), plainT(ev, "other", nil)}
 			},
 			wantFailed: []string{"tg"},
-			wantEvents: []string{"tg publish", "vk publish"},
-			want:       []Entry{newPosted("vk")},
+			wantEvents: []string{"tg publish", "other publish"},
+			want:       []Entry{newPosted("other")},
 		},
 		{
 			name: "rejected wrapped in context: still rejected",
@@ -223,11 +223,11 @@ func TestPublishAll(t *testing.T) {
 		{
 			name: "transport error: outcome unknown, pending kept",
 			targets: func(ev *[]string) []Target {
-				return []Target{plainT(ev, "tg", fail(fmt.Errorf("send: %w", errLost))), plainT(ev, "vk", nil)}
+				return []Target{plainT(ev, "tg", fail(fmt.Errorf("send: %w", errLost))), plainT(ev, "other", nil)}
 			},
 			wantFailed: []string{"tg"},
-			wantEvents: []string{"tg publish", "vk publish"},
-			want:       []Entry{pending("tg", dirA, hashA), newPosted("vk")},
+			wantEvents: []string{"tg publish", "other publish"},
+			want:       []Entry{pending("tg", dirA, hashA), newPosted("other")},
 		},
 		{
 			name: "unreadable 2xx: outcome unknown, pending kept",
@@ -259,10 +259,10 @@ func TestPublishAll(t *testing.T) {
 		{
 			name:       "pending, platform can't be checked: skipped, never posted blindly",
 			journal:    []Entry{pending("tg", dirA, hashA)},
-			targets:    func(ev *[]string) []Target { return []Target{plainT(ev, "tg", nil), plainT(ev, "vk", nil)} },
+			targets:    func(ev *[]string) []Target { return []Target{plainT(ev, "tg", nil), plainT(ev, "other", nil)} },
 			wantFailed: []string{"tg"},
-			wantEvents: []string{"vk publish"},
-			want:       []Entry{pending("tg", dirA, hashA), newPosted("vk")},
+			wantEvents: []string{"other publish"},
+			want:       []Entry{pending("tg", dirA, hashA), newPosted("other")},
 		},
 		{
 			name:    "pending, history check fails: skipped",
@@ -291,10 +291,10 @@ func TestPublishAll(t *testing.T) {
 		},
 		{
 			name:       "history scan starts after the newest id the journal knows for this target",
-			journal:    []Entry{posted("tg", "p/1", "h1", "40"), pending("tg", dirA, hashA, "42", "41"), posted("tg", "p/2", "h2", "x9"), posted("vk", "p/3", "h3", "900")},
+			journal:    []Entry{posted("tg", "p/1", "h1", "40"), pending("tg", dirA, hashA, "42", "41"), posted("tg", "p/2", "h2", "x9"), posted("other", "p/3", "h3", "900")},
 			targets:    func(ev *[]string) []Target { return []Target{cleanT(ev, "tg", nil, notFound, nil)} },
 			wantEvents: []string{"tg find since=42", "tg cleanup 42,41", "tg publish"},
-			want:       []Entry{posted("tg", "p/1", "h1", "40"), newPosted("tg"), posted("tg", "p/2", "h2", "x9"), posted("vk", "p/3", "h3", "900")},
+			want:       []Entry{posted("tg", "p/1", "h1", "40"), newPosted("tg"), posted("tg", "p/2", "h2", "x9"), posted("other", "p/3", "h3", "900")},
 		},
 		{
 			name:       "pending for the same text in another folder: checked, not posted blindly",
@@ -322,11 +322,11 @@ func TestPublishAll(t *testing.T) {
 			name:    "half sent, part can't be removed: not posted again, ids kept",
 			journal: []Entry{pending("tg", dirA, hashA, "10", "11")},
 			targets: func(ev *[]string) []Target {
-				return []Target{cleanT(ev, "tg", nil, notFound, func([]string) error { return errors.New("forbidden") }), plainT(ev, "vk", nil)}
+				return []Target{cleanT(ev, "tg", nil, notFound, func([]string) error { return errors.New("forbidden") }), plainT(ev, "other", nil)}
 			},
 			wantFailed: []string{"tg"},
-			wantEvents: []string{"tg find since=11", "tg cleanup 10,11", "vk publish"},
-			want:       []Entry{pending("tg", dirA, hashA, "10", "11"), newPosted("vk")},
+			wantEvents: []string{"tg find since=11", "tg cleanup 10,11", "other publish"},
+			want:       []Entry{pending("tg", dirA, hashA, "10", "11"), newPosted("other")},
 		},
 		{
 			name:       "half sent but found in history: recorded, nothing removed",
@@ -387,10 +387,10 @@ func TestPublishAll(t *testing.T) {
 		{
 			name: "several failures are all reported, in target order",
 			targets: func(ev *[]string) []Target {
-				return []Target{plainT(ev, "tg", fail(errLost)), plainT(ev, "max", nil), plainT(ev, "vk", fail(errRejected))}
+				return []Target{plainT(ev, "tg", fail(errLost)), plainT(ev, "max", nil), plainT(ev, "other", fail(errRejected))}
 			},
-			wantFailed: []string{"tg", "vk"},
-			wantEvents: []string{"tg publish", "max publish", "vk publish"},
+			wantFailed: []string{"tg", "other"},
+			wantEvents: []string{"tg publish", "max publish", "other publish"},
 			want:       []Entry{pending("tg", dirA, hashA), newPosted("max")},
 		},
 	}
@@ -530,7 +530,7 @@ func TestPublishAllSaveFails(t *testing.T) {
 			j := &Journal{path: filepath.Join(t.TempDir(), "missing-dir", "journal.json"), Entries: slices.Clone(tc.journal)}
 			var ev []string
 			tg := histT(&ev, "tg", nil, tc.find)
-			_, err := publishAll(t.Context(), zap.NewNop(), postA(), []Target{tg, plainT(&ev, "vk", nil)}, j, false)
+			_, err := publishAll(t.Context(), zap.NewNop(), postA(), []Target{tg, plainT(&ev, "other", nil)}, j, false)
 			if err == nil {
 				t.Fatal("want an error when the journal can't be saved")
 			}
@@ -547,18 +547,18 @@ func TestPublishAllHashPerAudience(t *testing.T) {
 	j := newJournal(t,
 		Entry{Target: "boosty", Dir: "posts/old", Hash: textHash("Full body"), Status: statusPosted, ID: "b"},
 		Entry{Target: "tg", Dir: "posts/old", Hash: textHash("Short https://boosty.to/x/1"), Status: statusPosted, ID: "t"},
-		Entry{Target: "vk", Dir: "posts/old", Hash: textHash("Full body"), Status: statusPosted, ID: "v"},
+		Entry{Target: "other", Dir: "posts/old", Hash: textHash("Full body"), Status: statusPosted, ID: "v"},
 	)
 	var ev []string
-	_, err := publishAll(t.Context(), zap.NewNop(), p, []Target{plainT(&ev, "boosty", nil), plainT(&ev, "tg", nil), plainT(&ev, "vk", nil)}, j, false)
+	_, err := publishAll(t.Context(), zap.NewNop(), p, []Target{plainT(&ev, "boosty", nil), plainT(&ev, "tg", nil), plainT(&ev, "other", nil)}, j, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"vk publish"}; !slices.Equal(ev, want) {
-		t.Errorf("calls %q, want %q (boosty and tg already have this text, vk had only the full one)", ev, want)
+	if want := []string{"other publish"}; !slices.Equal(ev, want) {
+		t.Errorf("calls %q, want %q (boosty and tg already have this text, other had only the full one)", ev, want)
 	}
-	if e := j.entryFor("vk", dirA); e == nil || e.Hash != textHash("Short https://boosty.to/x/1") {
-		t.Errorf("vk entry %+v: want the hash of the public teaser", e)
+	if e := j.entryFor("other", dirA); e == nil || e.Hash != textHash("Short https://boosty.to/x/1") {
+		t.Errorf("other entry %+v: want the hash of the public teaser", e)
 	}
 }
 
@@ -577,7 +577,7 @@ func TestJournalPut(t *testing.T) {
 		{"posted replaced by a newer posted", []Entry{d}, Entry{Target: "tg", Dir: dirA, Status: statusPosted, ID: "2"}, []Entry{{Target: "tg", Dir: dirA, Status: statusPosted, ID: "2"}}},
 		{"pending replaced, sent ids dropped", []Entry{{Target: "tg", Dir: dirA, Status: statusPending, Sent: []string{"1"}}}, p, []Entry{p}},
 		{"other folder is another entry", []Entry{d}, Entry{Target: "tg", Dir: "b", Status: statusPending}, []Entry{d, {Target: "tg", Dir: "b", Status: statusPending}}},
-		{"other target is another entry", []Entry{d}, Entry{Target: "vk", Dir: dirA, Status: statusPending}, []Entry{d, {Target: "vk", Dir: dirA, Status: statusPending}}},
+		{"other target is another entry", []Entry{d}, Entry{Target: "other", Dir: dirA, Status: statusPending}, []Entry{d, {Target: "other", Dir: dirA, Status: statusPending}}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -596,7 +596,7 @@ func TestJournalFind(t *testing.T) {
 		{Target: "tg", Dir: "a", Hash: "h1", Status: statusPending, ID: "pa"},
 		{Target: "tg", Dir: "b", Hash: "h1", Status: statusPosted, ID: "pb"},
 		{Target: "tg", Dir: "c", Hash: "h3", Status: statusPending, ID: "pc"},
-		{Target: "vk", Dir: "d", Hash: "h4", Status: statusPosted, ID: "vd"},
+		{Target: "other", Dir: "d", Hash: "h4", Status: statusPosted, ID: "vd"},
 	}
 	tests := []struct {
 		name, target, dir, hash, wantID string
@@ -625,7 +625,7 @@ func TestJournalFind(t *testing.T) {
 func TestJournalRestore(t *testing.T) {
 	old := Entry{Target: "tg", Dir: dirA, Status: statusPosted, ID: "old"}
 	cur := Entry{Target: "tg", Dir: dirA, Status: statusPending}
-	other := Entry{Target: "vk", Dir: dirA, Status: statusPosted, ID: "v"}
+	other := Entry{Target: "other", Dir: dirA, Status: statusPosted, ID: "v"}
 	tests := []struct {
 		name  string
 		start []Entry
@@ -698,7 +698,7 @@ func TestJournalDisk(t *testing.T) {
 			if len(j.Entries) != tc.wantN {
 				t.Fatalf("entries = %d, want %d", len(j.Entries), tc.wantN)
 			}
-			e := Entry{Target: "vk", Dir: "b", Hash: "h2", Status: statusPending, Sent: []string{"5", "6"}}
+			e := Entry{Target: "other", Dir: "b", Hash: "h2", Status: statusPending, Sent: []string{"5", "6"}}
 			j.put(e)
 			if err := j.save(); err != nil {
 				t.Fatal(err)
@@ -710,7 +710,7 @@ func TestJournalDisk(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := back.entryFor("vk", "b"); got == nil || entryKey(*got) != entryKey(e) || got.At.IsZero() {
+			if got := back.entryFor("other", "b"); got == nil || entryKey(*got) != entryKey(e) || got.At.IsZero() {
 				t.Errorf("round trip lost data: %+v", got)
 			}
 		})

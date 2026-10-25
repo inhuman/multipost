@@ -10,7 +10,7 @@ import MultipostSpec
    RouteGuard.one_wrong_address_refuses, RouteGuard.unresolved_refused, RouteGuard.every_kind_passable]
   "../route-guard.json"
 
-#evident_export "targets.select" TargetSelect.choose ["tg", "max", "vk", "request"] "outcome"
+#evident_export "targets.select" TargetSelect.choose ["tg", "max", "boosty", "request"] "outcome"
   [TargetSelect.never_selects_unready, TargetSelect.failure_posts_nowhere,
    TargetSelect.named_is_all_or_nothing, TargetSelect.default_takes_every_ready,
    TargetSelect.typo_is_loud, TargetSelect.unasked_does_not_block]

@@ -55,7 +55,7 @@ var RouteGuard = evidentlean.MustRequirement(routeGuardModel, lock,
 // each request. Lean: never_selects_unready, named_is_all_or_nothing,
 // typo_is_loud, failure_posts_nowhere, default_takes_every_ready.
 //
-// Harness facts: tg, max, vk, request, outcome {selected, failed}.
+// Harness facts: tg, max, boosty, request, outcome {selected, failed}.
 var TargetsSelect = evidentlean.MustRequirement(targetsSelectModel, lock,
 	"named platforms go all or nothing, by default every ready one, a typo always fails")
 

@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// Telegram is reachable only through the VPN, Russian platforms (MAX, VK)
-// only past it (on the author's machine rus-routes.sh pins their IPs to the
+// Telegram is reachable only through the VPN, MAX
+// only past it (on the author's machine rus-routes.sh pins its IPs to the
 // physical gateway). A post sent the wrong way either hangs or gets anti-bot stubs,
 // so every host is checked before it is used, upload hosts included —
 // those are handed out per request and may not be pinned.

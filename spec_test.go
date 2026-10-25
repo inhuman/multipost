@@ -184,7 +184,7 @@ func TestRouteGuardOverModel(t *testing.T) {
 
 func TestTargetsSelectOverModel(t *testing.T) {
 	requests := map[string][]string{
-		"byDefault": nil, "onlyTg": {"tg"}, "onlyVk": {"vk"}, "onlyMax": {"max"}, "all": {"tg", "max", "vk"},
+		"byDefault": nil, "onlyTg": {"tg"}, "onlyBoosty": {"boosty"}, "onlyMax": {"max"}, "all": {"tg", "max", "boosty"},
 	}
 	eachRow(t, spec.TargetsSelect, func(t *testing.T, row evident.Facts) {
 		var cfg Config
@@ -197,12 +197,12 @@ func TestTargetsSelectOverModel(t *testing.T) {
 		case "badId":
 			cfg.MaxBotToken, cfg.MaxChatID = "m", "12x"
 		}
-		if row["vk"] != "unset" {
-			cfg.VKURL = "https://vk.com/club1"
+		if row["boosty"] != "unset" {
+			cfg.BoostyURL = "https://boosty.to/x"
 		}
-		if row["vk"] == "ready" {
-			browserFlows["vk"] = func(context.Context, playwright.Page, *Post) (Result, error) { return Result{}, nil }
-			t.Cleanup(func() { delete(browserFlows, "vk") })
+		if row["boosty"] == "ready" {
+			browserFlows["boosty"] = func(context.Context, playwright.Page, *Post) (Result, error) { return Result{}, nil }
+			t.Cleanup(func() { delete(browserFlows, "boosty") })
 		}
 		targets, err := selectTargets(cfg, requests[row["request"].(string)], zap.NewNop())
 		selected := []string{}
