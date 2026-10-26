@@ -26,7 +26,7 @@ type Config struct {
 	MaxBotToken string `env:"MAX_BOT_TOKEN"`
 	MaxChatID   string `env:"MAX_CHAT_ID"`     // empty in the template until max-chats tells it
 	BoostyURL   string `env:"BOOSTY_URL"`      // https://boosty.to/<blog>
-	BoostyLevel string `env:"BOOSTY_LEVEL_ID"` // subscription level that sees the post; login boosty lists them
+	BoostyLevel string `env:"BOOSTY_LEVEL_ID"` // paid level that sees the post, empty: everyone; login boosty lists them
 	BoostyAuth  string `env:"BOOSTY_AUTH"`     // token file; default: boosty-auth.json next to the env file
 	SponsrURL   string `env:"SPONSR_URL"`      // https://sponsr.ru/<project>/
 	Profile     string `env:"BROWSER_PROFILE"` // default: browser/ next to the env file
@@ -343,8 +343,8 @@ func buildTarget(cfg Config, name string) (Target, error) {
 		if err != nil {
 			return nil, err
 		}
-		if blog == "" || cfg.BoostyLevel == "" {
-			return nil, missing("BOOSTY_URL", "BOOSTY_LEVEL_ID")
+		if blog == "" {
+			return nil, missing("BOOSTY_URL")
 		}
 		if _, err := os.Stat(cfg.BoostyAuth); err != nil {
 			return nil, fmt.Errorf("target boosty: no session, run login boosty (%w): %w", err, errNotConfigured)
@@ -428,8 +428,11 @@ func loginBoosty(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("session saved, but the blog does not answer: %w", err)
 	}
-	fmt.Println("\nсессия сохранена. Уровни подписки блога (id → BOOSTY_LEVEL_ID):")
+	fmt.Println("\nсессия сохранена. Платные уровни блога (id → BOOSTY_LEVEL_ID; пусто — пост для всех):")
 	for _, l := range levels {
+		if l.Price == 0 {
+			continue // the free level is refused for posts
+		}
 		fmt.Printf("%d\t%d ₽\t%s\n", l.ID, l.Price, l.Name)
 	}
 	return nil

@@ -441,3 +441,22 @@ func TestBoostyBlog(t *testing.T) {
 		}
 	}
 }
+
+// A post for everyone goes without a level: Boosty refuses the free
+// level's id (move_to_free_level, live answer 26.10.2026).
+func TestBoostyPublicPostHasNoLevel(t *testing.T) {
+	b, f := newBoosty(t, freshAuth())
+	b.LevelID = ""
+	if _, err := b.Publish(t.Context(), &Post{Mode: modeFull, Body: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range f.calls {
+		if c.Method == http.MethodPut {
+			if _, ok := c.Form["subscription_level_id"]; ok {
+				t.Errorf("public post sent a level: %v", c.Form)
+			}
+			return
+		}
+	}
+	t.Fatal("no draft PUT")
+}

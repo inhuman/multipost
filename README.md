@@ -74,7 +74,7 @@ Telegram доступен только через VPN, MAX — только ми
 | `MAX_BOT_TOKEN` | токен бота MAX (dev.max.ru); бот — админ канала |
 | `MAX_CHAT_ID` | id канала: `multipost max-chats` |
 | `BOOSTY_URL` | `https://boosty.to/<блог>` |
-| `BOOSTY_LEVEL_ID` | уровень подписки, которому виден пост: `multipost login boosty` печатает id |
+| `BOOSTY_LEVEL_ID` | платный уровень, которому виден пост (`multipost login boosty` печатает id); пусто — пост для всех |
 | `BOOSTY_AUTH` | файл сессии Boosty; по умолчанию `boosty-auth.json` рядом с `.env` |
 | `SPONSR_URL` | `https://sponsr.ru/<проект>/` |
 | `BROWSER_PROFILE` | профиль браузера; по умолчанию `browser/` рядом с `.env` |

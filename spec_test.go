@@ -198,7 +198,7 @@ func TestTargetsSelectOverModel(t *testing.T) {
 		}
 		cfg.BoostyAuth = filepath.Join(t.TempDir(), "boosty-auth.json")
 		if row["boosty"] != "unset" {
-			cfg.BoostyURL, cfg.BoostyLevel = "https://boosty.to/x", "1"
+			cfg.BoostyURL = "https://boosty.to/x"
 		}
 		if row["boosty"] == "ready" {
 			if err := saveBoostyAuth(cfg.BoostyAuth, &boostyAuth{AccessToken: "a"}); err != nil {

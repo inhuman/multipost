@@ -10,7 +10,7 @@ configured one goes. Three platforms stand for the three kinds of setup:
 * `max` — an API platform with a numeric id: configured, not configured, or
   configured with a typo in the id;
 * `boosty` — an API platform with a browser session: configured, not configured,
-  or its URL and level set without a session yet (counts as not configured).
+  or its URL set without a session yet (counts as not configured).
 
 Named platforms must all be ready, or nothing goes: a request is all or
 nothing. By default the unready ones are skipped and reported. A value that

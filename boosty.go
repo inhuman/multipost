@@ -37,7 +37,7 @@ import (
 // editor, so a foreign draft is refused, never overwritten.
 type Boosty struct {
 	Blog     string
-	LevelID  string // subscription level that sees the post
+	LevelID  string // subscription level that sees the post; empty: everyone
 	AuthPath string // token file written by `login boosty`
 	API      string // boostyAPI; a fake server in tests
 	Upload   string // boostyUpload
@@ -147,7 +147,6 @@ func (b *Boosty) FillDraft(ctx context.Context, p *Post) error {
 		"title":                 {p.Title},
 		"data":                  {string(dataJSON)},
 		"teaser_data":           {string(teaserJSON)},
-		"subscription_level_id": {b.LevelID},
 		"price":                 {"0"},
 		"tags":                  {""},
 		"deny_comments":         {"false"},
@@ -156,6 +155,11 @@ func (b *Boosty) FillDraft(ctx context.Context, p *Post) error {
 		"advertiser_info":       {""},
 		"last_updated_at":       {fmt.Sprint(time.Now().Unix())},
 		"bundle_ids":            {""},
+	}
+	// A post for everyone has no level at all, as the editor sends it: the
+	// free level's id is refused (move_to_free_level).
+	if b.LevelID != "" {
+		form.Set("subscription_level_id", b.LevelID)
 	}
 	if err := b.call(ctx, http.MethodPut, b.API+"/v1/blog/"+b.Blog+"/post_draft", []byte(form.Encode()), formType, nil, nil); err != nil {
 		return fmt.Errorf("fill draft: %w", err)
