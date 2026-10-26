@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -25,6 +26,8 @@ type Config struct {
 	MaxBotToken string `env:"MAX_BOT_TOKEN"`
 	MaxChatID   string `env:"MAX_CHAT_ID"`     // empty in the template until max-chats tells it
 	BoostyURL   string `env:"BOOSTY_URL"`      // https://boosty.to/<blog>
+	BoostyLevel string `env:"BOOSTY_LEVEL_ID"` // subscription level that sees the post; login boosty lists them
+	BoostyAuth  string `env:"BOOSTY_AUTH"`     // token file; default: boosty-auth.json next to the env file
 	SponsrURL   string `env:"SPONSR_URL"`      // https://sponsr.ru/<project>/
 	Profile     string `env:"BROWSER_PROFILE"` // default: browser/ next to the env file
 	Headless    bool   `env:"BROWSER_HEADLESS" env-default:"false"`
@@ -39,7 +42,9 @@ var paidTargets = map[string]bool{"boosty": true, "sponsr": true}
 const usage = `multipost — один пост на все площадки
 
   multipost -env <путь/.env> [-only tg,max] [-dry-run] [-force] <каталог поста>
-  multipost -env <путь/.env> login boosty|sponsr      войти в браузерном профиле
+  multipost -env <путь/.env> login boosty             сессия Boosty из браузера (строкой из консоли)
+  multipost -env <путь/.env> login sponsr             войти в браузерном профиле
+  multipost -env <путь/.env> boosty-draft <каталог>   положить пост в черновик Boosty, не публикуя
   multipost -env <путь/.env> max-chats                чаты бота MAX, для MAX_CHAT_ID
 
 Токены и адреса проекта — в его .env (см. README, env.example).
@@ -81,6 +86,9 @@ func loadConfig(envPath string) (Config, error) {
 	if cfg.Profile == "" {
 		cfg.Profile = filepath.Join(filepath.Dir(envPath), "browser")
 	}
+	if cfg.BoostyAuth == "" {
+		cfg.BoostyAuth = filepath.Join(filepath.Dir(envPath), "boosty-auth.json")
+	}
 	return cfg, nil
 }
 
@@ -107,7 +115,10 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 
 	switch fs.Arg(0) {
 	case "login":
-		url := map[string]string{"boosty": cfg.BoostyURL, "sponsr": cfg.SponsrURL}[fs.Arg(1)]
+		if fs.Arg(1) == "boosty" {
+			return loginBoosty(ctx, cfg)
+		}
+		url := map[string]string{"sponsr": cfg.SponsrURL}[fs.Arg(1)]
 		if url == "" {
 			return fmt.Errorf("login %q: unknown site or its URL is not set in .env", fs.Arg(1))
 		}
@@ -120,6 +131,20 @@ func run(ctx context.Context, log *zap.Logger, args []string) error {
 		for _, c := range chats {
 			fmt.Printf("%d\t%s\t%s\t%s\n", c.ChatID, c.Type, c.Title, c.Link)
 		}
+		return nil
+	case "boosty-draft":
+		post, err := loadPost(fs.Arg(1))
+		if err != nil {
+			return err
+		}
+		t, err := buildTarget(cfg, "boosty")
+		if err != nil {
+			return err
+		}
+		if err := t.(*Boosty).FillDraft(ctx, post); err != nil {
+			return err
+		}
+		fmt.Println("черновик заполнен: открой редактор блога на boosty.to")
 		return nil
 	}
 
@@ -313,16 +338,26 @@ func buildTarget(cfg Config, name string) (Target, error) {
 			return nil, fmt.Errorf("MAX_CHAT_ID: %w", err)
 		}
 		return &Max{Token: cfg.MaxBotToken, ChatID: id, API: maxAPI, Route: checkRoute}, nil
-	case "boosty", "sponsr":
-		url := map[string]string{"boosty": cfg.BoostyURL, "sponsr": cfg.SponsrURL}[name]
-		if url == "" {
-			return nil, missing(strings.ToUpper(name) + "_URL")
+	case "boosty":
+		blog, err := boostyBlog(cfg.BoostyURL)
+		if err != nil {
+			return nil, err
+		}
+		if blog == "" || cfg.BoostyLevel == "" {
+			return nil, missing("BOOSTY_URL", "BOOSTY_LEVEL_ID")
+		}
+		if _, err := os.Stat(cfg.BoostyAuth); err != nil {
+			return nil, fmt.Errorf("target boosty: no session, run login boosty (%w): %w", err, errNotConfigured)
+		}
+		return &Boosty{Blog: blog, LevelID: cfg.BoostyLevel, AuthPath: cfg.BoostyAuth, API: boostyAPI, Upload: boostyUpload, Route: checkRoute}, nil
+	case "sponsr":
+		if cfg.SponsrURL == "" {
+			return nil, missing("SPONSR_URL")
 		}
 		if browserFlows[name] == nil {
 			return nil, fmt.Errorf("target %s: browser flow not recorded yet: %w", name, errNotConfigured)
 		}
-		route := map[string]routeWant{"boosty": viaAny, "sponsr": viaAny}[name]
-		return &BrowserTarget{name: name, startURL: url, profile: cfg.Profile, headless: cfg.Headless, route: route, checker: checkRoute, flow: browserFlows[name]}, nil
+		return &BrowserTarget{name: name, startURL: cfg.SponsrURL, profile: cfg.Profile, headless: cfg.Headless, route: viaAny, checker: checkRoute, flow: browserFlows[name]}, nil
 	}
 	return nil, fmt.Errorf("unknown target %q, want one of %v", name, allTargets)
 }
@@ -346,6 +381,8 @@ func routeStatus(ctx context.Context, t Target) string {
 		err = t.Route(ctx, t.API, viaVPN)
 	case *Max:
 		err = t.Route(ctx, t.API, viaDirect)
+	case *Boosty:
+		err = t.Route(ctx, t.API, viaAny)
 	case *BrowserTarget:
 		err = t.checker(ctx, t.startURL, t.route)
 	}
@@ -353,4 +390,47 @@ func routeStatus(ctx context.Context, t Target) string {
 		return "⛔ " + err.Error()
 	}
 	return "ок"
+}
+
+// boostyBlog is the blog name from BOOSTY_URL (https://boosty.to/<blog>).
+func boostyBlog(rawURL string) (string, error) {
+	if rawURL == "" {
+		return "", nil
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("BOOSTY_URL: %w", err)
+	}
+	blog, _, _ := strings.Cut(strings.Trim(u.Path, "/"), "/")
+	if u.Host != "boosty.to" || blog == "" {
+		return "", fmt.Errorf("BOOSTY_URL %q: want https://boosty.to/<blog>", rawURL)
+	}
+	return blog, nil
+}
+
+// loginBoosty saves the session the user copies from the browser console
+// and shows the blog's levels: proof the session works, and the ids for
+// BOOSTY_LEVEL_ID.
+func loginBoosty(ctx context.Context, cfg Config) error {
+	blog, err := boostyBlog(cfg.BoostyURL)
+	if err != nil {
+		return err
+	}
+	if blog == "" {
+		return errors.New("set BOOSTY_URL=https://boosty.to/<blog> in the .env first")
+	}
+	fmt.Printf("Во вкладке boosty.to, где ты вошёл, открой консоль (F12 → Console), выполни:\n\n%s\n\nи вставь сюда скопированную строку, Enter:\n", boostyLoginSnippet)
+	if err := importBoostyLogin(os.Stdin, cfg.BoostyAuth); err != nil {
+		return err
+	}
+	b := &Boosty{Blog: blog, AuthPath: cfg.BoostyAuth, API: boostyAPI, Upload: boostyUpload, Route: checkRoute}
+	levels, err := b.Levels(ctx)
+	if err != nil {
+		return fmt.Errorf("session saved, but the blog does not answer: %w", err)
+	}
+	fmt.Println("\nсессия сохранена. Уровни подписки блога (id → BOOSTY_LEVEL_ID):")
+	for _, l := range levels {
+		fmt.Printf("%d\t%d ₽\t%s\n", l.ID, l.Price, l.Name)
+	}
+	return nil
 }

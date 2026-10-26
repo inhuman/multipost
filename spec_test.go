@@ -21,7 +21,6 @@ import (
 	"github.com/inhuman/evident"
 	"github.com/inhuman/evident/evidenttest"
 	"github.com/inhuman/multipost/spec"
-	"github.com/playwright-community/playwright-go"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
@@ -197,12 +196,14 @@ func TestTargetsSelectOverModel(t *testing.T) {
 		case "badId":
 			cfg.MaxBotToken, cfg.MaxChatID = "m", "12x"
 		}
+		cfg.BoostyAuth = filepath.Join(t.TempDir(), "boosty-auth.json")
 		if row["boosty"] != "unset" {
-			cfg.BoostyURL = "https://boosty.to/x"
+			cfg.BoostyURL, cfg.BoostyLevel = "https://boosty.to/x", "1"
 		}
 		if row["boosty"] == "ready" {
-			browserFlows["boosty"] = func(context.Context, playwright.Page, *Post) (Result, error) { return Result{}, nil }
-			t.Cleanup(func() { delete(browserFlows, "boosty") })
+			if err := saveBoostyAuth(cfg.BoostyAuth, &boostyAuth{AccessToken: "a"}); err != nil {
+				t.Fatal(err)
+			}
 		}
 		targets, err := selectTargets(cfg, requests[row["request"].(string)], zap.NewNop())
 		selected := []string{}

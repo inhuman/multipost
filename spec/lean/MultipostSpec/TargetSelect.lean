@@ -9,8 +9,8 @@ configured one goes. Three platforms stand for the three kinds of setup:
 * `tg` — an API platform: configured or not;
 * `max` — an API platform with a numeric id: configured, not configured, or
   configured with a typo in the id;
-* `boosty` — a browser platform: configured, not configured, or its URL set while
-  its browser flow is not recorded yet (counts as not configured).
+* `boosty` — an API platform with a browser session: configured, not configured,
+  or its URL and level set without a session yet (counts as not configured).
 
 Named platforms must all be ready, or nothing goes: a request is all or
 nothing. By default the unready ones are skipped and reported. A value that
@@ -29,7 +29,7 @@ inductive MaxCfg where
   deriving DecidableEq, Repr, Lean.ToJson
 
 inductive Boosty where
-  | ready | unset | noFlow
+  | ready | unset | noLogin
   deriving DecidableEq, Repr, Lean.ToJson
 
 /-- What was asked: nothing named, or a list. -/
@@ -55,7 +55,7 @@ instance : Finite MaxCfg where
   complete := by intro x; cases x <;> decide
 
 instance : Finite Boosty where
-  all := [.ready, .unset, .noFlow]
+  all := [.ready, .unset, .noLogin]
   complete := by intro x; cases x <;> decide
 
 instance : Finite Target where

@@ -34,7 +34,7 @@
     }
   },
   "targets.select": {
-    "table_sha256": "251a21f3d5be9eaf845754a0d8f1c68c5eba9d372b697617e8fec9e1453b2ed3",
+    "table_sha256": "7243c13aab8dc60f4fd7f4b7effe9b51651a90610ebf3e5fea8947fe642d3e18",
     "theorems": {
       "TargetSelect.default_takes_every_ready": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (boosty : TargetSelect.Boosty) (t : TargetSelect.Target),\n  mx ≠ TargetSelect.MaxCfg.badId →\n    TargetSelect.setup tg mx boosty t = TargetSelect.Setup.ready →\n      t ∈ (TargetSelect.choose tg mx boosty TargetSelect.Request.byDefault).selected",
       "TargetSelect.failure_posts_nowhere": "∀ (tg : TargetSelect.Tg) (mx : TargetSelect.MaxCfg) (boosty : TargetSelect.Boosty) (req : TargetSelect.Request),\n  (TargetSelect.choose tg mx boosty req).failed = Bool.true → (TargetSelect.choose tg mx boosty req).selected = []",

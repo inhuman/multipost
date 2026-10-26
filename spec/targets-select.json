@@ -54,21 +54,25 @@
    "in": {"tg": "ready", "request": "all", "max": "ready", "boosty": "unset"}},
   {"out": {"selected": ["tg", "max"], "failed": false},
    "in":
-   {"tg": "ready", "request": "byDefault", "max": "ready", "boosty": "noFlow"}},
+   {"tg": "ready",
+    "request": "byDefault",
+    "max": "ready",
+    "boosty": "noLogin"}},
   {"out": {"selected": ["tg"], "failed": false},
    "in":
-   {"tg": "ready", "request": "onlyTg", "max": "ready", "boosty": "noFlow"}},
+   {"tg": "ready", "request": "onlyTg", "max": "ready", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
    {"tg": "ready",
     "request": "onlyBoosty",
     "max": "ready",
-    "boosty": "noFlow"}},
+    "boosty": "noLogin"}},
   {"out": {"selected": ["max"], "failed": false},
    "in":
-   {"tg": "ready", "request": "onlyMax", "max": "ready", "boosty": "noFlow"}},
+   {"tg": "ready", "request": "onlyMax", "max": "ready", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
-   "in": {"tg": "ready", "request": "all", "max": "ready", "boosty": "noFlow"}},
+   "in":
+   {"tg": "ready", "request": "all", "max": "ready", "boosty": "noLogin"}},
   {"out": {"selected": ["tg", "boosty"], "failed": false},
    "in":
    {"tg": "ready", "request": "byDefault", "max": "unset", "boosty": "ready"}},
@@ -99,21 +103,25 @@
    "in": {"tg": "ready", "request": "all", "max": "unset", "boosty": "unset"}},
   {"out": {"selected": ["tg"], "failed": false},
    "in":
-   {"tg": "ready", "request": "byDefault", "max": "unset", "boosty": "noFlow"}},
+   {"tg": "ready",
+    "request": "byDefault",
+    "max": "unset",
+    "boosty": "noLogin"}},
   {"out": {"selected": ["tg"], "failed": false},
    "in":
-   {"tg": "ready", "request": "onlyTg", "max": "unset", "boosty": "noFlow"}},
+   {"tg": "ready", "request": "onlyTg", "max": "unset", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
    {"tg": "ready",
     "request": "onlyBoosty",
     "max": "unset",
-    "boosty": "noFlow"}},
+    "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "ready", "request": "onlyMax", "max": "unset", "boosty": "noFlow"}},
+   {"tg": "ready", "request": "onlyMax", "max": "unset", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
-   "in": {"tg": "ready", "request": "all", "max": "unset", "boosty": "noFlow"}},
+   "in":
+   {"tg": "ready", "request": "all", "max": "unset", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
    {"tg": "ready", "request": "byDefault", "max": "badId", "boosty": "ready"}},
@@ -144,21 +152,25 @@
    "in": {"tg": "ready", "request": "all", "max": "badId", "boosty": "unset"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "ready", "request": "byDefault", "max": "badId", "boosty": "noFlow"}},
+   {"tg": "ready",
+    "request": "byDefault",
+    "max": "badId",
+    "boosty": "noLogin"}},
   {"out": {"selected": ["tg"], "failed": false},
    "in":
-   {"tg": "ready", "request": "onlyTg", "max": "badId", "boosty": "noFlow"}},
+   {"tg": "ready", "request": "onlyTg", "max": "badId", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
    {"tg": "ready",
     "request": "onlyBoosty",
     "max": "badId",
-    "boosty": "noFlow"}},
+    "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "ready", "request": "onlyMax", "max": "badId", "boosty": "noFlow"}},
+   {"tg": "ready", "request": "onlyMax", "max": "badId", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
-   "in": {"tg": "ready", "request": "all", "max": "badId", "boosty": "noFlow"}},
+   "in":
+   {"tg": "ready", "request": "all", "max": "badId", "boosty": "noLogin"}},
   {"out": {"selected": ["max", "boosty"], "failed": false},
    "in":
    {"tg": "unset", "request": "byDefault", "max": "ready", "boosty": "ready"}},
@@ -189,21 +201,25 @@
    "in": {"tg": "unset", "request": "all", "max": "ready", "boosty": "unset"}},
   {"out": {"selected": ["max"], "failed": false},
    "in":
-   {"tg": "unset", "request": "byDefault", "max": "ready", "boosty": "noFlow"}},
+   {"tg": "unset",
+    "request": "byDefault",
+    "max": "ready",
+    "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "unset", "request": "onlyTg", "max": "ready", "boosty": "noFlow"}},
+   {"tg": "unset", "request": "onlyTg", "max": "ready", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
    {"tg": "unset",
     "request": "onlyBoosty",
     "max": "ready",
-    "boosty": "noFlow"}},
+    "boosty": "noLogin"}},
   {"out": {"selected": ["max"], "failed": false},
    "in":
-   {"tg": "unset", "request": "onlyMax", "max": "ready", "boosty": "noFlow"}},
+   {"tg": "unset", "request": "onlyMax", "max": "ready", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
-   "in": {"tg": "unset", "request": "all", "max": "ready", "boosty": "noFlow"}},
+   "in":
+   {"tg": "unset", "request": "all", "max": "ready", "boosty": "noLogin"}},
   {"out": {"selected": ["boosty"], "failed": false},
    "in":
    {"tg": "unset", "request": "byDefault", "max": "unset", "boosty": "ready"}},
@@ -234,21 +250,25 @@
    "in": {"tg": "unset", "request": "all", "max": "unset", "boosty": "unset"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "unset", "request": "byDefault", "max": "unset", "boosty": "noFlow"}},
+   {"tg": "unset",
+    "request": "byDefault",
+    "max": "unset",
+    "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "unset", "request": "onlyTg", "max": "unset", "boosty": "noFlow"}},
+   {"tg": "unset", "request": "onlyTg", "max": "unset", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
    {"tg": "unset",
     "request": "onlyBoosty",
     "max": "unset",
-    "boosty": "noFlow"}},
+    "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "unset", "request": "onlyMax", "max": "unset", "boosty": "noFlow"}},
+   {"tg": "unset", "request": "onlyMax", "max": "unset", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
-   "in": {"tg": "unset", "request": "all", "max": "unset", "boosty": "noFlow"}},
+   "in":
+   {"tg": "unset", "request": "all", "max": "unset", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
    {"tg": "unset", "request": "byDefault", "max": "badId", "boosty": "ready"}},
@@ -279,22 +299,25 @@
    "in": {"tg": "unset", "request": "all", "max": "badId", "boosty": "unset"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "unset", "request": "byDefault", "max": "badId", "boosty": "noFlow"}},
+   {"tg": "unset",
+    "request": "byDefault",
+    "max": "badId",
+    "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "unset", "request": "onlyTg", "max": "badId", "boosty": "noFlow"}},
+   {"tg": "unset", "request": "onlyTg", "max": "badId", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
    {"tg": "unset",
     "request": "onlyBoosty",
     "max": "badId",
-    "boosty": "noFlow"}},
+    "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "unset", "request": "onlyMax", "max": "badId", "boosty": "noFlow"}},
+   {"tg": "unset", "request": "onlyMax", "max": "badId", "boosty": "noLogin"}},
   {"out": {"selected": [], "failed": true},
    "in":
-   {"tg": "unset", "request": "all", "max": "badId", "boosty": "noFlow"}}],
+   {"tg": "unset", "request": "all", "max": "badId", "boosty": "noLogin"}}],
  "output": "outcome",
  "inputs": ["tg", "max", "boosty", "request"],
  "id": "targets.select"}
