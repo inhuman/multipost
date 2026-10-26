@@ -8,16 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"maps"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -51,6 +49,8 @@ const (
 	boostyUpload = "https://upload.boosty.to"
 	boostyImages = "https://images.boosty.to"
 	boostyChunk  = 5 << 20
+	// The page config's publisher.videoFiles.upload.chunkSize (MB).
+	boostyVideoChunk = 1 << 20
 	// The editor refreshes ahead of expiry; a token dying mid-post would
 	// split the upload from the publish.
 	boostyRefreshMargin = 10 * time.Minute
@@ -102,11 +102,6 @@ func (b *Boosty) result(id string) Result {
 // FillDraft puts the post into the blog's draft without publishing it: the
 // author can look at it in the editor (`multipost boosty-draft`).
 func (b *Boosty) FillDraft(ctx context.Context, p *Post) error {
-	for _, m := range p.Media {
-		if kindOf(m) == mediaVideo {
-			return fmt.Errorf("boosty: video is not supported yet (%s)", m)
-		}
-	}
 	// Any route: the session must come from where the browser logged in,
 	// and the browser takes the system's route like we do.
 	for _, u := range []string{b.API, b.Upload} {
@@ -119,18 +114,30 @@ func (b *Boosty) FillDraft(ctx context.Context, p *Post) error {
 		return err
 	}
 
-	var images []boostyBlock
+	var media []boostyBlock
+	var firstImage boostyBlock
+	hasVideo := false
 	for _, path := range p.Media {
-		img, err := b.uploadImage(ctx, path)
+		var block boostyBlock
+		var err error
+		if kindOf(path) == mediaVideo {
+			block, err = b.uploadVideo(ctx, path)
+			hasVideo = true
+		} else {
+			block, err = b.uploadImage(ctx, path)
+			if firstImage == nil {
+				firstImage = block
+			}
+		}
 		if err != nil {
 			return fmt.Errorf("upload %s: %w", path, err)
 		}
-		images = append(images, img)
+		media = append(media, block)
 	}
-	data := append(images, boostyBlocks(text)...)
+	data := append(media, boostyBlocks(text)...)
 	teaser := []boostyBlock{}
-	if len(images) > 0 {
-		teaser = append(teaser, images[0])
+	if firstImage != nil {
+		teaser = append(teaser, firstImage)
 	}
 	if p.Mode == modeTeaser {
 		teaser = append(teaser, boostyBlocks(p.Teaser)...)
@@ -144,17 +151,19 @@ func (b *Boosty) FillDraft(ctx context.Context, p *Post) error {
 		return err
 	}
 	form := url.Values{
-		"title":                 {p.Title},
-		"data":                  {string(dataJSON)},
-		"teaser_data":           {string(teaserJSON)},
-		"price":                 {"0"},
-		"tags":                  {""},
-		"deny_comments":         {"false"},
-		"deny_reactions":        {"false"},
-		"wait_video":            {"false"},
-		"advertiser_info":       {""},
-		"last_updated_at":       {fmt.Sprint(time.Now().Unix())},
-		"bundle_ids":            {""},
+		"title":          {p.Title},
+		"data":           {string(dataJSON)},
+		"teaser_data":    {string(teaserJSON)},
+		"price":          {"0"},
+		"tags":           {""},
+		"deny_comments":  {"false"},
+		"deny_reactions": {"false"},
+		// The post waits until its videos are processed, as the editor's
+		// "publish after processing" does: no broken player in the feed.
+		"wait_video":      {fmt.Sprint(hasVideo)},
+		"advertiser_info": {""},
+		"last_updated_at": {fmt.Sprint(time.Now().Unix())},
+		"bundle_ids":      {""},
 	}
 	// A post for everyone has no level at all, as the editor sends it: the
 	// free level's id is refused (move_to_free_level).
@@ -266,18 +275,121 @@ func (b *Boosty) uploadImage(ctx context.Context, path string) (boostyBlock, err
 	if err := b.call(ctx, http.MethodPost, b.Upload+"/upload/"+slot.FileID+"/complete", nil, "", nil, nil); err != nil {
 		return nil, fmt.Errorf("complete: %w", err)
 	}
-	// The editor sends the size; webp has no decoder here and goes as 0×0.
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(content))
-	if err != nil {
-		cfg = image.Config{}
-	}
+	// The editor's own image block (its serializer sends no width, size 0).
 	return boostyBlock{
-		"type": "image", "id": slot.FileID, "uploadId": slot.FileID,
-		"url":  boostyImages + "/image/" + slot.FileID,
-		"data": map[string]any{}, "rendition": "",
-		"size": len(content), "width": cfg.Width, "height": cfg.Height,
+		"type": "image", "id": slot.FileID, "url": boostyImages + "/image/" + slot.FileID,
+		"rendition": "", "size": 0,
 	}, nil
 }
+
+// Video goes to OK video, as the editor does while Boosty's BUNNY_VIDEOS
+// flag is off (threshold 0 in the page config, 26.10.2026):
+//
+//	GET  api.boosty.to/v1/media_data/video/upload_url?file_name=  → {id, uploadUrl, videoId}
+//	POST <uploadUrl>   1 MB chunks, Content-Range bytes a-b/size
+//	POST api.boosty.to/v1/media_data/video/{id}/finish             → the block's fields
+func (b *Boosty) uploadVideo(ctx context.Context, path string) (boostyBlock, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	name := filepath.Base(path)
+	var slot struct {
+		ID        string `json:"id"`
+		UploadURL string `json:"uploadUrl"`
+	}
+	q := url.Values{"file_name": {name}}
+	if err := b.call(ctx, http.MethodGet, b.API+"/v1/media_data/video/upload_url?"+q.Encode(), nil, "", nil, &slot); err != nil {
+		return nil, fmt.Errorf("upload url: %w", err)
+	}
+	if slot.ID == "" || slot.UploadURL == "" {
+		return nil, errors.New("upload url: no id or uploadUrl")
+	}
+	if err := b.Route(ctx, slot.UploadURL, viaAny); err != nil {
+		return nil, err
+	}
+	for off := 0; off < len(content); {
+		next, err := b.sendVideoChunk(ctx, slot.UploadURL, name, content, off, min(off+boostyVideoChunk, len(content)))
+		if err != nil {
+			return nil, err
+		}
+		off = next
+	}
+
+	var fin map[string]any
+	if err := b.call(ctx, http.MethodPost, b.API+"/v1/media_data/video/"+slot.ID+"/finish", nil, "", nil, &fin); err != nil {
+		return nil, fmt.Errorf("finish: %w", err)
+	}
+	if st, _ := fin["status"].(string); st == "fail" || st == "ban" {
+		return nil, fmt.Errorf("finish: video status %q", st)
+	}
+	// The editor's serializer: the finish answer's fields, src as url.
+	block := boostyBlock{"type": "ok_video", "complete": true, "id": cmp.Or(fin["id"], any(slot.ID)), "size": len(content), "title": name}
+	for _, k := range []string{"url", "vid", "playerUrls", "defaultPreview", "preview", "previewId", "duration", "timeCode", "viewsCounter", "status", "showViewsCounter"} {
+		if v, ok := fin[k]; ok {
+			block[k] = v
+		}
+	}
+	return block, nil
+}
+
+// sendVideoChunk sends bytes [from, to) and returns where to go on: a 206
+// accepted only part of the chunk, the rest goes again. The upload URL is
+// signed and not Boosty's: the session token is not sent there.
+func (b *Boosty) sendVideoChunk(ctx context.Context, uploadURL, name string, content []byte, from, to int) (int, error) {
+	for attempt := 0; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(content[from:to]))
+		if err != nil {
+			return 0, err
+		}
+		b.setHeaders(req)
+		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, url.PathEscape(name)))
+		req.Header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", from, to-1, len(content)))
+		req.Header.Set("X-Uploading-Mode", "parallel")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return 0, err
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return 0, err
+		}
+		last := receivedUpTo(resp.Header)
+		switch {
+		case resp.StatusCode == http.StatusPartialContent && last >= from && attempt < 10:
+			return last + 1, nil
+		case resp.StatusCode == http.StatusPartialContent && attempt < 10:
+			continue
+		case resp.StatusCode == http.StatusCreated && to == len(content):
+			// Parallel mode's answer to the last chunk when others are missing.
+			return 0, fmt.Errorf("video chunks missing: %.200s", body)
+		case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated:
+			if last >= from && last < to-1 {
+				return last + 1, nil
+			}
+			return to, nil
+		}
+		return 0, fmt.Errorf("video chunk %d-%d: %w", from, to-1, &httpError{Status: resp.StatusCode, Body: string(body)})
+	}
+}
+
+// receivedUpTo is the last byte the upload server has, from its Range or
+// Content-Range header; -1 when it does not say.
+func receivedUpTo(h http.Header) int {
+	m := reRange.FindStringSubmatch(cmp.Or(h.Get("Range"), h.Get("Content-Range")))
+	if m == nil {
+		return -1
+	}
+	n, err := strconv.Atoi(m[2])
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+var reRange = regexp.MustCompile(`(\d+)\s*-\s*(\d+)`)
 
 const formType = "application/x-www-form-urlencoded"
 

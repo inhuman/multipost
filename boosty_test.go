@@ -83,7 +83,7 @@ func TestBoostyPlainMatchesJournalHash(t *testing.T) {
 }
 
 type boostyCall struct {
-	Method, Path, Auth, Part string
+	Method, Path, Auth, Part, Range string
 	Form                     url.Values
 	Size                     int
 }
@@ -97,6 +97,9 @@ type boostyFake struct {
 	status  map[string]int
 	expired map[string]bool // access tokens answered with 401
 	refresh int             // status of /oauth/token/, 0 = ok
+	base    string          // the server's URL, for the video upload URL
+	partial []int           // answers to video chunks: 206 accepting up to this byte, popped in order
+	vstatus string          // video status in the finish answer
 }
 
 func (f *boostyFake) serve(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +107,7 @@ func (f *boostyFake) serve(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	c := boostyCall{Method: r.Method, Path: r.URL.Path, Auth: r.Header.Get("Authorization"), Part: r.Header.Get("X-PartNumber"), Size: len(body)}
+	c := boostyCall{Method: r.Method, Path: r.URL.Path, Auth: r.Header.Get("Authorization"), Part: r.Header.Get("X-PartNumber"), Range: r.Header.Get("Content-Range"), Size: len(body)}
 	if r.Header.Get("Content-Type") == formType {
 		if c.Form, err = url.ParseQuery(string(body)); err != nil {
 			f.t.Fatal(err)
@@ -136,6 +139,16 @@ func (f *boostyFake) serve(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"data":%s}`, cmpOrNull(f.posts))
 	case key == "POST /image":
 		fmt.Fprint(w, `{"fileId":"F1"}`)
+	case key == "GET /v1/media_data/video/upload_url":
+		fmt.Fprintf(w, `{"id":"V1","uploadUrl":%q,"videoId":"9"}`, f.base+"/ok-upload?sig=x")
+	case key == "POST /ok-upload":
+		if len(f.partial) > 0 {
+			w.Header().Set("Range", fmt.Sprintf("bytes=0-%d", f.partial[0]))
+			f.partial = f.partial[1:]
+			w.WriteHeader(http.StatusPartialContent)
+		}
+	case key == "POST /v1/media_data/video/V1/finish":
+		fmt.Fprintf(w, `{"id":"V1","vid":"9","url":"https://ok.ru/v/9","status":%q,"playerUrls":[],"duration":3}`, f.vstatus)
 	case key == "POST /v1/blog/b/post_draft/publish/":
 		fmt.Fprint(w, `{"data":{"post":{"id":"P1"}}}`)
 	default:
@@ -163,6 +176,7 @@ func newBoosty(t *testing.T, auth boostyAuth) (*Boosty, *boostyFake) {
 	f := &boostyFake{t: t, status: map[string]int{}, expired: map[string]bool{}}
 	srv := httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(srv.Close)
+	f.base = srv.URL
 	path := filepath.Join(t.TempDir(), "boosty-auth.json")
 	if err := saveBoostyAuth(path, &auth); err != nil {
 		t.Fatal(err)
@@ -251,11 +265,85 @@ func TestBoostyUploadChunks(t *testing.T) {
 	}
 }
 
-func TestBoostyRefusesBeforeAnyCall(t *testing.T) {
+func TestBoostyVideo(t *testing.T) {
 	b, f := newBoosty(t, freshAuth())
-	_, err := b.Publish(t.Context(), &Post{Body: "x", Media: []string{tempFile(t, "a.mp4", 10)}})
-	if err == nil || len(f.calls) != 0 {
-		t.Errorf("video: err %v, calls %v", err, f.paths())
+	p := &Post{Mode: modeFull, Body: "x", Media: []string{tempFile(t, "a.mp4", 10), tempFile(t, "b.png", 1)}}
+	if _, err := b.Publish(t.Context(), p); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"GET /v1/blog/b/post_draft", "GET /v1/media_data/video/upload_url", "POST /ok-upload",
+		"POST /v1/media_data/video/V1/finish", "POST /image", "POST /upload/F1", "POST /upload/F1/complete",
+		"PUT /v1/blog/b/post_draft", "POST /v1/blog/b/post_draft/publish/",
+	}
+	if !slices.Equal(f.paths(), want) {
+		t.Fatalf("calls\n %v\nwant %v", f.paths(), want)
+	}
+	if up := f.calls[2]; up.Auth != "" || up.Range != "bytes 0-9/10" {
+		t.Errorf("upload host got auth %q, range %q", up.Auth, up.Range)
+	}
+	form := f.calls[7].Form
+	var data []map[string]any
+	if err := json.Unmarshal([]byte(form.Get("data")), &data); err != nil {
+		t.Fatal(err)
+	}
+	v := data[0]
+	if v["type"] != "ok_video" || v["id"] != "V1" || v["vid"] != "9" || v["url"] != "https://ok.ru/v/9" || v["complete"] != true || v["title"] != "a.mp4" {
+		t.Errorf("video block %v", v)
+	}
+	if data[1]["type"] != "image" {
+		t.Errorf("media order: %v", data[:2])
+	}
+	if form.Get("wait_video") != "true" {
+		t.Errorf("wait_video %q: the post must wait for the video", form.Get("wait_video"))
+	}
+	if strings.Contains(form.Get("teaser_data"), "ok_video") || !strings.Contains(form.Get("teaser_data"), `"id":"F1"`) {
+		t.Errorf("teaser %s: the first image, never the video", form.Get("teaser_data"))
+	}
+}
+
+// Video chunks are 1 MB, the last byte of each is in Content-Range.
+func TestBoostyVideoChunks(t *testing.T) {
+	const mb = 1 << 20 // publisher.videoFiles.upload.chunkSize in the page config
+	for _, tt := range []struct {
+		size    int
+		partial []int
+		ranges  []string
+	}{
+		{mb, nil, []string{fmt.Sprintf("bytes 0-%d/%d", mb-1, mb)}},
+		{mb + 1, nil, []string{fmt.Sprintf("bytes 0-%d/%d", mb-1, mb+1), fmt.Sprintf("bytes %d-%d/%d", mb, mb, mb+1)}},
+		// 206: the server kept bytes 0..99, the rest of the chunk goes again.
+		{mb, []int{99}, []string{fmt.Sprintf("bytes 0-%d/%d", mb-1, mb), fmt.Sprintf("bytes 100-%d/%d", mb-1, mb)}},
+	} {
+		b, f := newBoosty(t, freshAuth())
+		f.partial = tt.partial
+		if _, err := b.uploadVideo(t.Context(), tempFile(t, "a.mp4", tt.size)); err != nil {
+			t.Fatal(err)
+		}
+		var ranges []string
+		for _, c := range f.calls {
+			if c.Path == "/ok-upload" {
+				ranges = append(ranges, c.Range)
+			}
+		}
+		if !slices.Equal(ranges, tt.ranges) {
+			t.Errorf("size %d, partial %v: ranges %v, want %v", tt.size, tt.partial, ranges, tt.ranges)
+		}
+	}
+}
+
+func TestBoostyVideoFailed(t *testing.T) {
+	for name, setup := range map[string]func(*boostyFake){
+		"upload refused":      func(f *boostyFake) { f.status["POST /ok-upload"] = http.StatusForbidden },
+		"processing failed":   func(f *boostyFake) { f.vstatus = "fail" },
+		"banned by moderator": func(f *boostyFake) { f.vstatus = "ban" },
+	} {
+		b, f := newBoosty(t, freshAuth())
+		setup(f)
+		_, err := b.Publish(t.Context(), &Post{Body: "x", Media: []string{tempFile(t, "a.mp4", 10)}})
+		if classify(err) != resultRejected || slices.Contains(f.paths(), "PUT /v1/blog/b/post_draft") {
+			t.Errorf("%s: err %v (%s), calls %v", name, err, classify(err), f.paths())
+		}
 	}
 }
 
